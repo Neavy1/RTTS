@@ -1,0 +1,23 @@
+# Gradle / Android build outputs
+**/build/
+**/.gradle/
+**/.kotlin/
+local.properties
+*.apk
+*.aab
+
+# IDE
+.idea/
+*.iml
+.vscode/
+
+# ASR models (large ONNX binaries, fetched separately -- see README)
+rtts-app/app/src/main/assets/models/
+spike-android/app/src/main/assets/models/
+
+# Misc OS
+.DS_Store
+Thumbs.db
+
+# Claude Code local runtime state
+.claude/
