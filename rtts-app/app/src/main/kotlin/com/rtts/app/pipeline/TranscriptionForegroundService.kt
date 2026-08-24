@@ -73,13 +73,13 @@ class TranscriptionForegroundService : LifecycleService() {
             source.start().collect { chunk ->
                 val finishedSegments = engine.acceptAudioChunk(chunk.samples)
                 for (seg in finishedSegments) {
-                    persistSegment(engine, sessionId, seg.start, seg.samples)
+                    persistSegment(engine, sessionId, seg.startSample, seg.samples)
                 }
             }
 
             // Flow completed (file source reached the end, or stop() was called).
             for (seg in engine.flushPending()) {
-                persistSegment(engine, sessionId, seg.start, seg.samples)
+                persistSegment(engine, sessionId, seg.startSample, seg.samples)
             }
             finishSession(sessionId)
         }

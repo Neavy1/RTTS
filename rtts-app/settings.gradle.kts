@@ -14,3 +14,4 @@ dependencyResolutionManagement {
 }
 rootProject.name = "RttsApp"
 include(":app")
+include(":shared")

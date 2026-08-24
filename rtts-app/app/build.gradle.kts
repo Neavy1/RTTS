@@ -1,7 +1,7 @@
 plugins {
     id("com.android.application")
     id("org.jetbrains.kotlin.android")
-    id("com.google.devtools.ksp")
+    id("org.jetbrains.kotlin.plugin.compose")
 }
 
 android {
@@ -33,9 +33,6 @@ android {
     buildFeatures {
         compose = true
     }
-    composeOptions {
-        kotlinCompilerExtensionVersion = "1.5.14"
-    }
 
     packaging {
         resources.excludes.add("META-INF/*")
@@ -47,7 +44,7 @@ android {
 }
 
 dependencies {
-    implementation(files("libs/sherpa-onnx-1.13.4.aar"))
+    implementation(project(":shared"))
 
     implementation("androidx.core:core-ktx:1.13.1")
     implementation("androidx.appcompat:appcompat:1.7.0")
@@ -63,8 +60,4 @@ dependencies {
     implementation("androidx.compose.material3:material3")
     implementation("androidx.compose.material:material-icons-extended")
     implementation("androidx.navigation:navigation-compose:2.7.7")
-
-    implementation("androidx.room:room-runtime:2.6.1")
-    implementation("androidx.room:room-ktx:2.6.1")
-    ksp("androidx.room:room-compiler:2.6.1")
 }

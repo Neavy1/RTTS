@@ -6,11 +6,8 @@ import com.k2fsa.sherpa.onnx.OfflineRecognizer
 import com.k2fsa.sherpa.onnx.OfflineRecognizerConfig
 import com.k2fsa.sherpa.onnx.OfflineWhisperModelConfig
 import com.k2fsa.sherpa.onnx.SileroVadModelConfig
-import com.k2fsa.sherpa.onnx.SpeechSegment
 import com.k2fsa.sherpa.onnx.Vad
 import com.k2fsa.sherpa.onnx.VadModelConfig
-
-data class TranscriptResult(val text: String, val lang: String)
 
 /** Languages the ATC comms are expected to be in. Anything else is treated as a mis-detection. */
 private val EXPECTED_LANGUAGES = setOf("es", "en")
@@ -24,7 +21,7 @@ private val EXPECTED_LANGUAGES = setOf("es", "en")
  * auto-detected language falls outside the expected es/en set, we redecode once
  * forcing English (statistically the more common mis-detection case for ATC audio).
  */
-class SherpaOnnxSttEngine(modelManager: ModelManager, numThreads: Int = 4) {
+class SherpaOnnxSttEngine(modelManager: ModelManager, numThreads: Int = 4) : SttEngine {
 
     private val recognizer: OfflineRecognizer
     private val vad: Vad
@@ -63,29 +60,29 @@ class SherpaOnnxSttEngine(modelManager: ModelManager, numThreads: Int = 4) {
         vad = Vad(config = vadModelConfig)
     }
 
-    /** Feed a chunk of 16kHz mono audio; returns any transmissions that VAD finished segmenting. */
-    fun acceptAudioChunk(samples: FloatArray): List<SpeechSegment> {
+    override fun acceptAudioChunk(samples: FloatArray): List<AudioSegment> {
         vad.acceptWaveform(samples)
-        val finished = mutableListOf<SpeechSegment>()
+        val finished = mutableListOf<AudioSegment>()
         while (!vad.empty()) {
-            finished.add(vad.front())
+            val seg = vad.front()
+            finished.add(AudioSegment(startSample = seg.start, samples = seg.samples))
             vad.pop()
         }
         return finished
     }
 
-    /** Call when the audio source stops, to flush any trailing in-progress segment. */
-    fun flushPending(): List<SpeechSegment> {
+    override fun flushPending(): List<AudioSegment> {
         vad.flush()
-        val finished = mutableListOf<SpeechSegment>()
+        val finished = mutableListOf<AudioSegment>()
         while (!vad.empty()) {
-            finished.add(vad.front())
+            val seg = vad.front()
+            finished.add(AudioSegment(startSample = seg.start, samples = seg.samples))
             vad.pop()
         }
         return finished
     }
 
-    fun transcribe(samples: FloatArray, sampleRate: Int): TranscriptResult {
+    override fun transcribe(samples: FloatArray, sampleRate: Int): TranscriptResult {
         val first = decodeOnce(samples, sampleRate, language = "")
         if (first.lang in EXPECTED_LANGUAGES || first.text.isBlank()) {
             return first
@@ -113,7 +110,7 @@ class SherpaOnnxSttEngine(modelManager: ModelManager, numThreads: Int = 4) {
         return TranscriptResult(text = result.text, lang = result.lang)
     }
 
-    fun release() {
+    override fun release() {
         vad.release()
         recognizer.release()
     }

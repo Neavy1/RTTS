@@ -9,23 +9,18 @@ import javax.crypto.spec.PBEKeySpec
 private const val PBKDF2_ITERATIONS = 120_000
 private const val KEY_LENGTH_BITS = 256
 
-/**
- * Local-only auth for one or a few fixed operators: no backend, PIN hashed with PBKDF2
- * and stored in Room. Good enough for a single-tablet operational deployment.
- */
-class AuthRepository(private val db: AppDatabase) {
+/** Android implementation of [AuthRepository]: PIN hashed with PBKDF2, stored in Room. */
+class AndroidAuthRepository(private val db: AppDatabase) : AuthRepository {
 
-    suspend fun hasAnyUser(): Boolean = db.userDao().getFirstUser() != null
+    override suspend fun hasAnyUser(): Boolean = db.userDao().getFirstUser() != null
 
-    suspend fun createUser(username: String, pin: String): UserEntity {
+    override suspend fun createUser(username: String, pin: String) {
         val salt = randomSalt()
         val hash = hashPin(pin, salt)
-        val user = UserEntity(username = username, pinHash = hash, salt = salt)
-        val id = db.userDao().insert(user)
-        return user.copy(id = id)
+        db.userDao().insert(UserEntity(username = username, pinHash = hash, salt = salt))
     }
 
-    suspend fun verifyPin(username: String, pin: String): Boolean {
+    override suspend fun verifyPin(username: String, pin: String): Boolean {
         val user = db.userDao().findByUsername(username) ?: return false
         return hashPin(pin, user.salt) == user.pinHash
     }
