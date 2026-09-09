@@ -24,6 +24,7 @@ class FileAudioSource(
         "samples/videoejemplo.wav",
         "samples/ContactoAviones.wav",
         "samples/WhatsAppAudio.wav",
+        "samples/WhatsAppAudio2.wav",
     ),
 ) : AudioSource {
 
