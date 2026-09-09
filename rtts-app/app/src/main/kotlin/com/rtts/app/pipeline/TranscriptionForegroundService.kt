@@ -16,12 +16,14 @@ import com.rtts.app.audio.AnalogLineInAudioSource
 import com.rtts.app.audio.AudioSource
 import com.rtts.app.audio.FileAudioSource
 import com.rtts.app.audio.UriAudioSource
+import com.rtts.app.audio.WavFileWriter
 import com.rtts.app.data.SessionEntity
 import com.rtts.app.data.TranscriptSegmentEntity
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
+import java.io.File
 
 private const val NOTIFICATION_CHANNEL_ID = "rtts_transcription"
 private const val NOTIFICATION_ID = 1
@@ -95,6 +97,16 @@ class TranscriptionForegroundService : LifecycleService() {
         if (result.text.isBlank()) return
         val startMs = startSample * 1000L / 16000
         val durationMs = samples.size * 1000L / 16000
+        val createdAt = System.currentTimeMillis()
+
+        val audioFile = File(getExternalFilesDir(null) ?: filesDir, "segments/$sessionId/$createdAt.wav")
+        val audioPath = try {
+            WavFileWriter.write(audioFile, samples)
+            audioFile.absolutePath
+        } catch (e: Exception) {
+            null // playback is a bonus; a failed write shouldn't drop the transcript itself
+        }
+
         val container = (application as RttsApplication).container
         container.database.transcriptSegmentDao().insert(
             TranscriptSegmentEntity(
@@ -104,7 +116,8 @@ class TranscriptionForegroundService : LifecycleService() {
                 speakerLabel = "Desconocido",
                 text = result.text,
                 lang = result.lang,
-                createdAtEpochMs = System.currentTimeMillis(),
+                createdAtEpochMs = createdAt,
+                audioFilePath = audioPath,
             )
         )
     }

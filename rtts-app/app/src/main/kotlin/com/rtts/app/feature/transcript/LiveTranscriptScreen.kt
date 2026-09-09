@@ -2,6 +2,7 @@ package com.rtts.app.feature.transcript
 
 import android.content.Context
 import android.content.Intent
+import android.media.MediaPlayer
 import android.net.Uri
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
@@ -25,6 +26,8 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.FolderOpen
 import androidx.compose.material.icons.filled.Mic
+import androidx.compose.material.icons.filled.Pause
+import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Stop
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
@@ -33,6 +36,7 @@ import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Scaffold
@@ -40,10 +44,15 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
+import androidx.compose.foundation.border
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.produceState
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -76,6 +85,10 @@ fun LiveTranscriptScreen() {
     val filePicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
         if (uri != null) startTranscriptionOfFile(context, uri)
     }
+
+    val player = remember { SegmentAudioPlayer() }
+    DisposableEffect(Unit) { onDispose { player.release() } }
+    val playingSegmentId by player.playingSegmentId
 
     Scaffold(
         topBar = {
@@ -116,7 +129,13 @@ fun LiveTranscriptScreen() {
                     contentPadding = PaddingValues(16.dp),
                     verticalArrangement = Arrangement.spacedBy(10.dp),
                 ) {
-                    items(segments) { segment -> TranscriptCard(segment) }
+                    items(segments) { segment ->
+                        TranscriptCard(
+                            segment = segment,
+                            isPlaying = segment.id == playingSegmentId,
+                            onPlayToggle = { player.toggle(segment) },
+                        )
+                    }
                 }
             }
         }
@@ -239,10 +258,18 @@ private fun EmptyState(isRunning: Boolean) {
 }
 
 @Composable
-private fun TranscriptCard(segment: TranscriptSegmentEntity) {
+private fun TranscriptCard(
+    segment: TranscriptSegmentEntity,
+    isPlaying: Boolean,
+    onPlayToggle: () -> Unit,
+) {
     val speakerColor = colorForSpeaker(segment.speakerLabel)
     Card(
-        modifier = Modifier.fillMaxWidth(),
+        modifier = Modifier
+            .fillMaxWidth()
+            .let {
+                if (isPlaying) it.border(2.dp, RttsAmber, MaterialTheme.shapes.medium) else it
+            },
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
         elevation = CardDefaults.cardElevation(defaultElevation = 1.dp),
     ) {
@@ -264,6 +291,19 @@ private fun TranscriptCard(segment: TranscriptSegmentEntity) {
                     )
                     Spacer(Modifier.width(8.dp))
                     LanguageChip(segment.lang)
+                    if (segment.audioFilePath != null) {
+                        Spacer(Modifier.width(4.dp))
+                        IconButton(
+                            onClick = onPlayToggle,
+                            modifier = Modifier.size(28.dp),
+                        ) {
+                            Icon(
+                                if (isPlaying) Icons.Filled.Pause else Icons.Filled.PlayArrow,
+                                contentDescription = if (isPlaying) "Pausar" else "Reproducir",
+                                tint = MaterialTheme.colorScheme.primary,
+                            )
+                        }
+                    }
                 }
                 Spacer(Modifier.width(4.dp))
                 Text(
@@ -314,6 +354,41 @@ private fun LanguageChip(lang: String) {
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
     }
+}
+
+/**
+ * Plays back one transcript segment's saved audio clip at a time, so an operator can listen
+ * and verify a transmission against its transcription. Segment-level only (no word-level
+ * highlighting) -- our STT engine doesn't return word timestamps.
+ */
+private class SegmentAudioPlayer {
+    val playingSegmentId = mutableStateOf<Long?>(null)
+    private var mediaPlayer: MediaPlayer? = null
+
+    fun toggle(segment: TranscriptSegmentEntity) {
+        val path = segment.audioFilePath ?: return
+        if (playingSegmentId.value == segment.id) {
+            stop()
+            return
+        }
+        stop()
+        mediaPlayer = MediaPlayer().apply {
+            setDataSource(path)
+            setOnCompletionListener { stop() }
+            setOnErrorListener { _, _, _ -> stop(); true }
+            prepare()
+            start()
+        }
+        playingSegmentId.value = segment.id
+    }
+
+    private fun stop() {
+        mediaPlayer?.release()
+        mediaPlayer = null
+        playingSegmentId.value = null
+    }
+
+    fun release() = stop()
 }
 
 private fun startTranscriptionOfSamples(context: Context) {

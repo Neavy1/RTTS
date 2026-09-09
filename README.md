@@ -21,20 +21,22 @@ App Android para tablet que transcribe en vivo la comunicación de radio piloto 
 
 ## Modelos de IA (no incluidos en el repo)
 
-Los modelos ONNX (~154 MB) están excluidos del repo por tamaño (el decoder de Whisper `base` supera el límite de 100 MB de GitHub). Antes de compilar, hay que colocarlos en `rtts-app/app/src/main/assets/models/`:
+Los modelos ONNX (~360 MB) están excluidos del repo por tamaño (el decoder de Whisper supera el límite de 100 MB de GitHub). Antes de compilar, hay que colocarlos en `rtts-app/app/src/main/assets/models/`:
 
 ```
 assets/models/
 ├── silero_vad.onnx
-└── sherpa-onnx-whisper-base/
-    ├── base-encoder.int8.onnx
-    ├── base-decoder.int8.onnx
-    └── base-tokens.txt
+└── sherpa-onnx-whisper-small/
+    ├── small-encoder.int8.onnx
+    ├── small-decoder.int8.onnx
+    └── small-tokens.txt
 ```
 
 Descarga:
 - VAD: https://github.com/k2-fsa/sherpa-onnx/releases/download/asr-models/silero_vad.onnx
-- Whisper base: https://github.com/k2-fsa/sherpa-onnx/releases/download/asr-models/sherpa-onnx-whisper-base.tar.bz2 (extraer solo `base-encoder.int8.onnx`, `base-decoder.int8.onnx`, `base-tokens.txt`)
+- Whisper small: https://github.com/k2-fsa/sherpa-onnx/releases/download/asr-models/sherpa-onnx-whisper-small.tar.bz2 (extraer solo `small-encoder.int8.onnx`, `small-decoder.int8.onnx`, `small-tokens.txt`)
+
+Se subió de `base` a `small` porque `base` alucinaba con frecuencia (texto en japonés/árabe sin relación con el audio, bucles de repetición) en transmisiones cortas. El motor (`SherpaOnnxSttEngine`) ya no confía ciegamente en la detección automática de idioma de Whisper: si el resultado cae fuera de es/en, o tiene pinta de alucinación (muy poca variedad de palabras), reintenta forzando el otro idioma.
 
 ## Compilar
 

@@ -29,4 +29,5 @@ data class TranscriptSegmentEntity(
     val text: String,
     val lang: String,
     val createdAtEpochMs: Long,
+    val audioFilePath: String? = null,
 )

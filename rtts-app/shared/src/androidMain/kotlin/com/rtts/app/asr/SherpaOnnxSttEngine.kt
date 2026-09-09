@@ -48,9 +48,11 @@ class SherpaOnnxSttEngine(modelManager: ModelManager, numThreads: Int = 4) : Stt
         val vadModelConfig = VadModelConfig(
             sileroVadModelConfig = SileroVadModelConfig(
                 model = modelManager.vadModelPath,
-                threshold = 0.5f,
+                // Raised from 0.5 / 0.25s: at the lower thresholds, ambiguous noise/background
+                // segments were reaching Whisper and coming back as hallucinated nonsense text.
+                threshold = 0.6f,
                 minSilenceDuration = 0.5f,
-                minSpeechDuration = 0.25f,
+                minSpeechDuration = 0.3f,
                 windowSize = 512,
                 maxSpeechDuration = 20.0f,
             ),
@@ -84,10 +86,31 @@ class SherpaOnnxSttEngine(modelManager: ModelManager, numThreads: Int = 4) : Stt
 
     override fun transcribe(samples: FloatArray, sampleRate: Int): TranscriptResult {
         val first = decodeOnce(samples, sampleRate, language = "")
-        if (first.lang in EXPECTED_LANGUAGES || first.text.isBlank()) {
-            return first
-        }
-        return decodeOnce(samples, sampleRate, language = "en")
+        if (first.text.isBlank()) return first
+        if (first.lang in EXPECTED_LANGUAGES && !looksLikeHallucination(first.text)) return first
+
+        // Either the auto-detected language was outside es/en, or the text itself looks like
+        // a hallucination loop (e.g. "shoot or shoot or shoot..."). Retry forcing the other
+        // expected language -- and if that still looks bad, try the remaining one as a
+        // last resort. At most 3 decodes total, and only for audio that already failed once.
+        val retryLang = if (first.lang == "es") "en" else "es"
+        val second = decodeOnce(samples, sampleRate, language = retryLang)
+        if (second.text.isBlank() || !looksLikeHallucination(second.text)) return second
+
+        val lastLang = if (retryLang == "es") "en" else "es"
+        return decodeOnce(samples, sampleRate, language = lastLang)
+    }
+
+    /**
+     * Cheap detector for Whisper's repetition-loop failure mode ("shoot or shoot or shoot..."),
+     * which tends to show up on ambiguous/noisy segments. Flags text with very few distinct
+     * words relative to its length.
+     */
+    private fun looksLikeHallucination(text: String): Boolean {
+        val words = text.trim().lowercase().split(Regex("\\s+")).filter { it.isNotBlank() }
+        if (words.size < 6) return false
+        val uniqueRatio = words.toSet().size.toDouble() / words.size
+        return uniqueRatio < 0.45
     }
 
     private fun decodeOnce(samples: FloatArray, sampleRate: Int, language: String): TranscriptResult {

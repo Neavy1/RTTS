@@ -13,16 +13,18 @@ class ModelManager(private val context: Context) {
     private val modelsDir = File(context.filesDir, "models")
 
     val whisperEncoderPath: String
-        get() = File(modelsDir, "sherpa-onnx-whisper-base/base-encoder.int8.onnx").absolutePath
+        get() = File(modelsDir, "sherpa-onnx-whisper-small/small-encoder.int8.onnx").absolutePath
     val whisperDecoderPath: String
-        get() = File(modelsDir, "sherpa-onnx-whisper-base/base-decoder.int8.onnx").absolutePath
+        get() = File(modelsDir, "sherpa-onnx-whisper-small/small-decoder.int8.onnx").absolutePath
     val whisperTokensPath: String
-        get() = File(modelsDir, "sherpa-onnx-whisper-base/base-tokens.txt").absolutePath
+        get() = File(modelsDir, "sherpa-onnx-whisper-small/small-tokens.txt").absolutePath
     val vadModelPath: String
         get() = File(modelsDir, "silero_vad.onnx").absolutePath
 
     fun ensureModelsExtracted() {
-        val marker = File(modelsDir, ".extracted")
+        // Bump this when the bundled model set changes, so upgraded installs re-extract
+        // instead of keeping stale files from a previous model under the same marker.
+        val marker = File(modelsDir, ".extracted-v2-small")
         if (marker.exists()) return
 
         modelsDir.deleteRecursively()

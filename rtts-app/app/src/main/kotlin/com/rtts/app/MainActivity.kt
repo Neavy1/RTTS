@@ -27,7 +27,9 @@ class MainActivity : ComponentActivity() {
         setContent {
             RttsTheme {
                 val navController = rememberNavController()
-                NavHost(navController = navController, startDestination = "login") {
+                // TODO: login suspendido temporalmente para agilizar pruebas -- volver a
+                // "login" cuando se retome el flujo de autenticación.
+                NavHost(navController = navController, startDestination = "transcript") {
                     composable("login") {
                         LoginScreen(
                             authRepository = container.authRepository,
