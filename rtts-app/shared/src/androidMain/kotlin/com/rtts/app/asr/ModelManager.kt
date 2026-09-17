@@ -24,7 +24,7 @@ class ModelManager(private val context: Context) {
     fun ensureModelsExtracted() {
         // Bump this when the bundled model set changes, so upgraded installs re-extract
         // instead of keeping stale files from a previous model under the same marker.
-        val marker = File(modelsDir, ".extracted-v2-small")
+        val marker = File(modelsDir, ".extracted-v5-small")
         if (marker.exists()) return
 
         modelsDir.deleteRecursively()

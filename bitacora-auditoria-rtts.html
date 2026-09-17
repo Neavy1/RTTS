@@ -1,0 +1,648 @@
+<title>Bitácora RTTS</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Public+Sans:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600;700&display=swap">
+<style>
+  :root {
+    --paper: #f4f6fa;
+    --paper-raised: #ffffff;
+    --ink: #101826;
+    --ink-muted: #48536a;
+    --ink-faint: #7c879c;
+    --line: #d9e0ea;
+    --line-strong: #b9c3d4;
+    --brand: #1b3a63;
+    --brand-2: #3e6da6;
+    --amber: #a5720f;
+    --amber-soft: #f2e2c2;
+    --ok: #1e6b3a;
+    --ok-soft: #dcefe1;
+    --warn: #8a5a00;
+    --warn-soft: #faedd2;
+    --blocked: #a02a22;
+    --blocked-soft: #f7dfdc;
+    --shadow: 0 1px 2px rgba(16, 24, 38, 0.06), 0 8px 24px -12px rgba(16, 24, 38, 0.18);
+  }
+
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --paper: #10141b;
+      --paper-raised: #171d28;
+      --ink: #e8ecf2;
+      --ink-muted: #a7b0bf;
+      --ink-faint: #717c8f;
+      --line: #2a3140;
+      --line-strong: #3a4356;
+      --brand: #7fa8dd;
+      --brand-2: #5486c4;
+      --amber: #e3b04b;
+      --amber-soft: #3a2f16;
+      --ok: #6fcf94;
+      --ok-soft: #17301f;
+      --warn: #e3b04b;
+      --warn-soft: #34290f;
+      --blocked: #e5847a;
+      --blocked-soft: #351815;
+      --shadow: 0 1px 2px rgba(0, 0, 0, 0.4), 0 8px 24px -12px rgba(0, 0, 0, 0.6);
+    }
+  }
+  :root[data-theme="dark"] {
+    --paper: #10141b;
+    --paper-raised: #171d28;
+    --ink: #e8ecf2;
+    --ink-muted: #a7b0bf;
+    --ink-faint: #717c8f;
+    --line: #2a3140;
+    --line-strong: #3a4356;
+    --brand: #7fa8dd;
+    --brand-2: #5486c4;
+    --amber: #e3b04b;
+    --amber-soft: #3a2f16;
+    --ok: #6fcf94;
+    --ok-soft: #17301f;
+    --warn: #e3b04b;
+    --warn-soft: #34290f;
+    --blocked: #e5847a;
+    --blocked-soft: #351815;
+    --shadow: 0 1px 2px rgba(0, 0, 0, 0.4), 0 8px 24px -12px rgba(0, 0, 0, 0.6);
+  }
+
+  * { box-sizing: border-box; }
+
+  body {
+    background: var(--paper);
+    color: var(--ink);
+    font-family: 'Public Sans', system-ui, -apple-system, sans-serif;
+    font-size: 16px;
+    line-height: 1.55;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  .page {
+    max-width: 920px;
+    margin: 0 auto;
+    padding: 56px 28px 96px;
+  }
+
+  .mono {
+    font-family: 'JetBrains Mono', ui-monospace, Menlo, monospace;
+    font-variant-numeric: tabular-nums;
+  }
+
+  /* ---------- Header / flight-plan strip ---------- */
+
+  .fpl {
+    border: 1px solid var(--line-strong);
+    border-radius: 10px;
+    background: var(--paper-raised);
+    box-shadow: var(--shadow);
+    overflow: hidden;
+    margin-bottom: 40px;
+  }
+  .fpl-top {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 16px;
+    padding: 22px 26px 18px;
+    border-bottom: 1px solid var(--line);
+  }
+  .fpl-title {
+    font-size: 30px;
+    font-weight: 800;
+    letter-spacing: -0.01em;
+    text-wrap: balance;
+    color: var(--ink);
+  }
+  .fpl-title span { color: var(--brand); }
+  .fpl-sub {
+    color: var(--ink-muted);
+    font-size: 15px;
+    margin-top: 4px;
+  }
+  .fpl-fields {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 1px;
+    background: var(--line);
+  }
+  .fpl-field {
+    background: var(--paper-raised);
+    padding: 14px 20px;
+  }
+  .fpl-field .k {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 10.5px;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--ink-faint);
+    display: block;
+    margin-bottom: 5px;
+  }
+  .fpl-field .v {
+    font-size: 15px;
+    font-weight: 600;
+    color: var(--ink);
+  }
+
+  /* ---------- Sections ---------- */
+
+  section { margin-top: 52px; }
+  .eyebrow {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 12px;
+    font-weight: 600;
+    letter-spacing: 0.09em;
+    text-transform: uppercase;
+    color: var(--brand-2);
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-bottom: 10px;
+  }
+  .eyebrow::after {
+    content: "";
+    height: 1px;
+    flex: 1;
+    background: var(--line);
+  }
+  h2 {
+    font-size: 24px;
+    font-weight: 700;
+    letter-spacing: -0.01em;
+    text-wrap: balance;
+    margin: 0 0 12px;
+  }
+  .lede {
+    color: var(--ink-muted);
+    font-size: 15.5px;
+    max-width: 68ch;
+    margin-bottom: 24px;
+  }
+
+  /* ---------- Status chips ---------- */
+
+  .chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 11.5px;
+    font-weight: 600;
+    letter-spacing: 0.02em;
+    padding: 3px 9px 3px 8px;
+    border-radius: 5px;
+    white-space: nowrap;
+  }
+  .chip::before {
+    content: "";
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: currentColor;
+  }
+  .chip.ok { background: var(--ok-soft); color: var(--ok); }
+  .chip.warn { background: var(--warn-soft); color: var(--warn); }
+  .chip.blocked { background: var(--blocked-soft); color: var(--blocked); }
+
+  /* ---------- Tables ---------- */
+
+  .table-wrap {
+    overflow-x: auto;
+    border: 1px solid var(--line);
+    border-radius: 10px;
+    box-shadow: var(--shadow);
+    background: var(--paper-raised);
+  }
+  table {
+    width: 100%;
+    border-collapse: collapse;
+    min-width: 640px;
+  }
+  th {
+    text-align: left;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 0.07em;
+    text-transform: uppercase;
+    color: var(--ink-faint);
+    padding: 13px 18px;
+    border-bottom: 1px solid var(--line-strong);
+    background: color-mix(in srgb, var(--brand) 4%, var(--paper-raised));
+  }
+  td {
+    padding: 14px 18px;
+    border-bottom: 1px solid var(--line);
+    font-size: 14.5px;
+    vertical-align: top;
+  }
+  tr:last-child td { border-bottom: none; }
+  td.num, th.num { font-family: 'JetBrains Mono', monospace; }
+  td .note { color: var(--ink-muted); font-size: 13px; margin-top: 3px; }
+
+  /* ---------- Info panels (modelo / pipeline) ---------- */
+
+  .info-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
+  .info-panel {
+    border: 1px solid var(--line);
+    border-radius: 10px;
+    padding: 24px 26px;
+    background: var(--paper-raised);
+    box-shadow: var(--shadow);
+  }
+  .info-panel.dark { background: var(--brand); border-color: var(--brand); color: #fff; }
+  .info-panel .k {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 11px;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    opacity: 0.7;
+    margin-bottom: 14px;
+  }
+  .info-panel .row {
+    display: flex;
+    justify-content: space-between;
+    gap: 14px;
+    font-size: 14.5px;
+    padding: 8px 0;
+    border-top: 1px solid rgba(127,127,127,0.15);
+  }
+  .info-panel .row:first-of-type { border-top: none; padding-top: 0; }
+  .info-panel .row .lbl { color: var(--ink-muted); }
+  .info-panel.dark .row .lbl { color: rgba(255,255,255,0.7); }
+  .info-panel .row .val { font-family: 'JetBrains Mono', monospace; font-weight: 600; text-align: right; }
+
+  /* ---------- Reason / finding cards ---------- */
+
+  .reason-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 18px; }
+  .reason-card {
+    border: 1px solid var(--line);
+    border-radius: 10px;
+    padding: 22px;
+    background: var(--paper-raised);
+    box-shadow: var(--shadow);
+  }
+  .reason-card h3 { font-size: 15.5px; font-weight: 700; margin: 0 0 8px; }
+  .reason-card p { margin: 0; color: var(--ink-muted); font-size: 14px; }
+
+  /* ---------- Transmission log (transcript comparisons) ---------- */
+
+  .log { display: flex; flex-direction: column; gap: 10px; }
+  .log-entry {
+    display: grid;
+    grid-template-columns: 92px 1fr;
+    border: 1px solid var(--line);
+    border-radius: 8px;
+    overflow: hidden;
+    background: var(--paper-raised);
+    box-shadow: var(--shadow);
+  }
+  .log-entry.highlight { border-color: var(--ok); }
+  .log-tag {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 12px;
+    font-weight: 700;
+    letter-spacing: 0.03em;
+  }
+  .log-tag.tiny { background: var(--blocked-soft); color: var(--blocked); }
+  .log-tag.base { background: var(--warn-soft); color: var(--warn); }
+  .log-tag.small { background: var(--ok-soft); color: var(--ok); }
+  .log-text { padding: 14px 18px; font-size: 15px; font-style: italic; color: var(--ink); }
+
+  /* ---------- Latency gauge ---------- */
+
+  .gauge { height: 30px; border-radius: 6px; overflow: hidden; display: flex; border: 1px solid var(--line-strong); }
+  .gauge .seg-asr { background: var(--amber); }
+  .gauge .seg-rest { background: var(--brand); }
+  .gauge-legend { display: flex; gap: 28px; margin-top: 12px; font-family: 'JetBrains Mono', monospace; font-size: 12.5px; color: var(--ink-muted); }
+  .gauge-legend .dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; margin-right: 7px; }
+
+  .stat-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; margin-top: 20px; }
+  .stat-card { border: 1px solid var(--line); border-radius: 10px; padding: 24px 26px; background: var(--paper-raised); box-shadow: var(--shadow); }
+  .stat-card .num { font-family: 'JetBrains Mono', monospace; font-size: 38px; font-weight: 700; color: var(--amber); }
+  .stat-card .lbl { margin-top: 6px; color: var(--ink-muted); font-size: 14px; }
+
+  /* ---------- Numbered action list ---------- */
+
+  .action-list { display: flex; flex-direction: column; gap: 12px; }
+  .action {
+    display: grid;
+    grid-template-columns: 44px 1fr;
+    gap: 20px;
+    align-items: flex-start;
+    border: 1px solid var(--line);
+    border-radius: 10px;
+    padding: 18px 22px;
+    background: var(--paper-raised);
+    box-shadow: var(--shadow);
+  }
+  .action .n { font-family: 'JetBrains Mono', monospace; font-size: 20px; font-weight: 700; color: var(--amber); }
+  .action p { margin: 0; font-size: 14.5px; color: var(--ink); }
+
+  /* ---------- Callout (final recommendation) ---------- */
+
+  .callout {
+    display: flex;
+    gap: 22px;
+    align-items: center;
+    background: var(--brand);
+    color: #fff;
+    border-radius: 10px;
+    padding: 24px 28px;
+    box-shadow: var(--shadow);
+  }
+  .callout .tag {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 12px;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    opacity: 0.75;
+    white-space: nowrap;
+  }
+  .callout p { margin: 0; font-size: 15.5px; }
+
+  /* ---------- Footer ---------- */
+
+  footer {
+    margin-top: 64px;
+    padding-top: 22px;
+    border-top: 1px solid var(--line);
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+    gap: 12px;
+    flex-wrap: wrap;
+    color: var(--ink-faint);
+    font-size: 12.5px;
+  }
+  footer .mono { font-size: 12px; }
+
+  @media (max-width: 720px) {
+    .fpl-fields { grid-template-columns: repeat(2, 1fr); }
+    .info-grid { grid-template-columns: 1fr; }
+    .reason-grid { grid-template-columns: 1fr; }
+    .log-entry { grid-template-columns: 72px 1fr; }
+    .stat-grid { grid-template-columns: 1fr; }
+    .action { grid-template-columns: 32px 1fr; }
+    .callout { flex-direction: column; align-items: flex-start; gap: 10px; }
+  }
+</style>
+
+<div class="page">
+
+  <div class="fpl">
+    <div class="fpl-top">
+      <div>
+        <div class="fpl-title"><span>RTTS</span> — Bitácora de Auditoría</div>
+        <div class="fpl-sub">Sherpa-onnx + Whisper en producción, y qué Mac comprar para el salto a iOS</div>
+      </div>
+      <span class="chip ok">AUDITORÍA COMPLETA</span>
+    </div>
+    <div class="fpl-fields">
+      <div class="fpl-field"><span class="k">Decisión</span><span class="v mono">Sin migración</span></div>
+      <div class="fpl-field"><span class="k">Modelo en producción</span><span class="v mono">Whisper small</span></div>
+      <div class="fpl-field"><span class="k">Dispositivo probado</span><span class="v mono">Emulador x86_64</span></div>
+      <div class="fpl-field"><span class="k">Fecha del documento</span><span class="v mono">17/09</span></div>
+    </div>
+  </div>
+
+  <section style="margin-top:0">
+    <div class="eyebrow">Resumen</div>
+    <h2>Qué se auditó y qué decidimos</h2>
+    <p class="lede">
+      Antes de tocar código evaluamos si migrar el motor de transcripción a whisper.cpp tenía sentido.
+      La respuesta, con datos: no. Comparamos los tres tamaños de Whisper (tiny, base, small) con audio
+      real de radio, medimos dónde se va el tiempo de procesamiento, y encontramos tres cosas concretas
+      para corregir. Esta bitácora también resuelve la pregunta pendiente de la fase iOS: qué MacBook
+      comprar para compilar y probar en el iPad real.
+    </p>
+  </section>
+
+  <section>
+    <div class="eyebrow">01 · Decisión de arquitectura</div>
+    <h2>Nos quedamos con sherpa-onnx</h2>
+    <p class="lede">No migramos a whisper.cpp. Tres razones, respaldadas por la auditoría.</p>
+    <div class="reason-grid">
+      <div class="reason-card">
+        <h3>Ya funciona</h3>
+        <p>El pipeline completo — audio → VAD → ASR → interfaz — ya está construido, auditado y probado. No hay razón para reconstruirlo.</p>
+      </div>
+      <div class="reason-card">
+        <h3>Los datos lo respaldan</h3>
+        <p>El benchmark con audio real de radio muestra que el modelo actual (small) ya transcribe instrucciones de vuelo con precisión aceptable.</p>
+      </div>
+      <div class="reason-card">
+        <h3>El riesgo está en otro lado</h3>
+        <p>El cuello de botella real es el modelo, no el motor de inferencia. Cambiar de motor no resolvería eso — solo añadiría riesgo.</p>
+      </div>
+    </div>
+  </section>
+
+  <section>
+    <div class="eyebrow">02 · Configuración actual</div>
+    <h2>Lo que corre en producción hoy</h2>
+    <div class="info-grid">
+      <div class="info-panel dark">
+        <div class="k">Modelo</div>
+        <div class="row"><span class="lbl">Modelo</span><span class="val">Whisper small · int8</span></div>
+        <div class="row"><span class="lbl">Motor</span><span class="val">sherpa-onnx / ONNX Runtime</span></div>
+        <div class="row"><span class="lbl">Ejecución</span><span class="val">100% local, sin red</span></div>
+        <div class="row"><span class="lbl">Threads</span><span class="val">4</span></div>
+        <div class="row"><span class="lbl">Idiomas</span><span class="val">es / en, sin traducir</span></div>
+      </div>
+      <div class="info-panel">
+        <div class="k">Pipeline</div>
+        <div class="row"><span class="lbl">VAD</span><span class="val">Silero, umbral 0.6</span></div>
+        <div class="row"><span class="lbl">Voz mínima</span><span class="val">0.3 s</span></div>
+        <div class="row"><span class="lbl">Silencio mínimo</span><span class="val">0.5 s</span></div>
+        <div class="row"><span class="lbl">Segmento máximo</span><span class="val">20 s</span></div>
+        <div class="row"><span class="lbl">Reintento</span><span class="val">es→en→es si alucina</span></div>
+      </div>
+    </div>
+  </section>
+
+  <section>
+    <div class="eyebrow">03 · Benchmark</div>
+    <h2>tiny vs base vs small, mismos 4 audios reales</h2>
+    <p class="lede">882.6 segundos de audio de radio, procesados con cada tamaño de modelo bajo las mismas condiciones.</p>
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr><th style="width:34%">Métrica</th><th>tiny</th><th>base</th><th>small (actual)</th></tr>
+        </thead>
+        <tbody>
+          <tr><td>RTF global</td><td class="num">0.04x</td><td class="num">0.07x</td><td class="num" style="color:var(--ok); font-weight:700">0.35x</td></tr>
+          <tr><td>RAM pico (PSS)</td><td class="num">482 MB</td><td class="num">602 MB</td><td class="num">970 MB</td></tr>
+          <tr><td>Tiempo de carga</td><td class="num">1.14 s</td><td class="num">3.81 s</td><td class="num">18.56 s</td></tr>
+          <tr><td>Reintentos de idioma</td><td class="num">6</td><td class="num">4</td><td class="num" style="color:var(--ok); font-weight:700">2</td></tr>
+          <tr><td>Calidad en frases ATC</td><td><span class="chip blocked">Baja</span></td><td><span class="chip warn">Media</span></td><td><span class="chip ok">Alta</span></td></tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <section>
+    <div class="eyebrow">04 · Evidencia</div>
+    <h2>El mismo audio, tres resultados</h2>
+    <p class="lede">Instrucción real de control de torre, mismo segmento de audio:</p>
+    <div class="log">
+      <div class="log-entry">
+        <div class="log-tag tiny">tiny</div>
+        <div class="log-text">"I'm going to run away, right, Jack, see you at the Romeo, a little short, run away, one, two."</div>
+      </div>
+      <div class="log-entry">
+        <div class="log-tag base">base</div>
+        <div class="log-text">"1,000 1-mime ground runway 8 right taxi, the aeromials will hold short runway 12."</div>
+      </div>
+      <div class="log-entry highlight">
+        <div class="log-tag small">small</div>
+        <div class="log-text">"Runway 8, right, taxi, the Aromium Zulu, hold short, Runway 1, 2."</div>
+      </div>
+    </div>
+    <p class="lede" style="margin-top:28px">Audio poco claro — honestidad frente a alucinación:</p>
+    <div class="log">
+      <div class="log-entry">
+        <div class="log-tag tiny">tiny</div>
+        <div class="log-text">"36" <span style="font-style:normal; color:var(--ink-faint); font-size:13px">— inventado</span></div>
+      </div>
+      <div class="log-entry">
+        <div class="log-tag base">base</div>
+        <div class="log-text">"is only 6." <span style="font-style:normal; color:var(--ink-faint); font-size:13px">— inventado</span></div>
+      </div>
+      <div class="log-entry highlight">
+        <div class="log-tag small">small</div>
+        <div class="log-text">"[INAUDIBLE]" <span style="font-style:normal; color:var(--ok); font-size:13px">— honesto</span></div>
+      </div>
+    </div>
+  </section>
+
+  <section>
+    <div class="eyebrow">05 · Latencia</div>
+    <h2>¿Dónde se va el tiempo?</h2>
+    <p class="lede">El modelo es el cuello de botella, no el audio.</p>
+    <div class="gauge">
+      <div class="seg-asr" style="width:97.3%"></div>
+      <div class="seg-rest" style="width:2.7%"></div>
+    </div>
+    <div class="gauge-legend">
+      <span><span class="dot" style="background:var(--amber)"></span>ASR — 97.3%</span>
+      <span><span class="dot" style="background:var(--brand)"></span>VAD + decodificación — 2.7%</span>
+    </div>
+    <div class="stat-grid">
+      <div class="stat-card">
+        <div class="num">310.6 s</div>
+        <div class="lbl">Inferencia de Whisper, de 882.6 s de audio total</div>
+      </div>
+      <div class="stat-card">
+        <div class="num">24.9 s</div>
+        <div class="lbl">VAD (23.8s) + decodificación y resample (1.1s) combinados</div>
+      </div>
+    </div>
+    <p class="lede" style="margin-top:24px">Cualquier optimización futura de rendimiento debe enfocarse en el modelo — más threads, cuantización, o mejor hardware — no en el pipeline de audio.</p>
+  </section>
+
+  <section>
+    <div class="eyebrow">06 · Hallazgos</div>
+    <h2>Qué encontramos en la auditoría</h2>
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr><th style="width:24%">Hallazgo</th><th>Detalle</th><th style="width:16%">Estado</th></tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>Arranque en frío</td>
+            <td>El primer segmento tras cargar el modelo tuvo RTF 1.78x. Hay que precargar el modelo antes de la primera captura.</td>
+            <td><span class="chip warn">Pendiente</span></td>
+          </tr>
+          <tr>
+            <td>Detector de alucinaciones</td>
+            <td>No separa la puntuación al comparar palabras — dejó pasar una repetición real de tiny sin marcarla.</td>
+            <td><span class="chip warn">Pendiente</span></td>
+          </tr>
+          <tr>
+            <td>Resampler sin anti-aliasing</td>
+            <td>La decimación a 16kHz no filtra — riesgo si el audio de entrada no llega ya en 16kHz mono.</td>
+            <td><span class="chip warn">Pendiente</span></td>
+          </tr>
+          <tr>
+            <td>Solo probado en emulador</td>
+            <td>Todo esto se midió en x86_64 — no representa el rendimiento real en una tablet ARM.</td>
+            <td><span class="chip blocked">Bloqueado</span></td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <section>
+    <div class="eyebrow">07 · Recomendación técnica</div>
+    <h2>Próximos pasos para producción</h2>
+    <div class="action-list">
+      <div class="action"><div class="n">01</div><p>Probar en un dispositivo Android físico (ARM) en cuanto haya uno disponible — el emulador no basta para validar la tablet real.</p></div>
+      <div class="action"><div class="n">02</div><p>Precargar el modelo al iniciar la app para eliminar el arranque en frío antes de la primera captura.</p></div>
+      <div class="action"><div class="n">03</div><p>Corregir el detector de alucinaciones y evaluar el filtro anti-aliasing del resampler.</p></div>
+    </div>
+  </section>
+
+  <section>
+    <div class="eyebrow">08 · Siguiente fase</div>
+    <h2>El objetivo final es un iPad, y para eso necesitamos un Mac</h2>
+    <p class="lede">
+      Todo lo construido hasta ahora — motor de transcripción, VAD, arquitectura — corre igual en iOS.
+      Lo único que falta es una máquina con Xcode para compilar, firmar y probar en el iPad real.
+    </p>
+  </section>
+
+  <section>
+    <div class="eyebrow">09 · Análisis de mercado</div>
+    <h2>MacBook Air 13" vs 15"</h2>
+    <p class="lede">Única familia evaluada — el Mac solo compila y despliega, Whisper corre en el iPad.</p>
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr><th style="width:34%">Especificación</th><th>Air 13" (M4)</th><th>Air 15" (M4)</th></tr>
+        </thead>
+        <tbody>
+          <tr><td>Pantalla</td><td>13.6"</td><td>15.3"</td></tr>
+          <tr><td>CPU / GPU</td><td class="num">10 / 8 núcleos</td><td class="num">10 / 10 núcleos</td></tr>
+          <tr><td>RAM recomendada</td><td class="num">16 GB</td><td class="num">16 GB (24 GB ideal)</td></tr>
+          <tr><td>Peso</td><td class="num">1.24 kg</td><td class="num">1.51 kg</td></tr>
+          <tr><td>Batería</td><td class="num">hasta 18 h</td><td class="num">hasta 18 h</td></tr>
+          <tr><td>Precio de lista (16GB/256GB)</td><td class="num">~ USD 999</td><td class="num">~ USD 1,199</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <p class="lede" style="margin-top:14px; font-size:13px">
+      Precios de lista aproximados (config. base 2025/M4), sujetos a verificar al momento de compra; impuestos e importación varían por país.
+      Apple lanzó el chip M5 en marzo de 2026 a USD 1,299 / 1,499 si se prefiere el más reciente.
+    </p>
+  </section>
+
+  <section>
+    <div class="eyebrow">10 · Recomendación de compra</div>
+    <h2>MacBook Air 15", 16 GB de RAM como mínimo</h2>
+    <div class="reason-grid" style="grid-template-columns:1fr 1fr">
+      <div class="reason-card">
+        <h3>Más pantalla, no más potencia</h3>
+        <p>Xcode y el Simulador de iOS abiertos lado a lado necesitan espacio, no cómputo extra — el 15" da esa comodidad sin cambiar de familia.</p>
+      </div>
+      <div class="reason-card">
+        <h3>Air alcanza, Pro sobra</h3>
+        <p>Whisper corre en el iPad, no en el Mac. 16 GB es el mínimo recomendado por Apple para Xcode; 24 GB da margen para varios años de uso.</p>
+      </div>
+    </div>
+    <div class="callout" style="margin-top:20px">
+      <span class="tag">Conclusión</span>
+      <p>MacBook Air 15" (M4), 16 GB / 24 GB si el presupuesto lo permite — suficiente para compilar RTTS y probarlo en el iPad real por varios años.</p>
+    </div>
+  </section>
+
+  <footer>
+    <span class="mono">RTTS / Radio-to-Text Transcription System</span>
+    <span class="mono">Bitácora de auditoría — 17 de septiembre, 2026</span>
+  </footer>
+
+</div>

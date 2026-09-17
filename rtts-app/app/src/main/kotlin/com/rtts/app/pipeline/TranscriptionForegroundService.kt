@@ -12,6 +12,7 @@ import androidx.lifecycle.LifecycleService
 import androidx.lifecycle.lifecycleScope
 import com.rtts.app.RttsApplication
 import com.rtts.app.asr.SherpaOnnxSttEngine
+import com.rtts.app.benchmark.BenchmarkRunner
 import com.rtts.app.audio.AnalogLineInAudioSource
 import com.rtts.app.audio.AudioSource
 import com.rtts.app.audio.FileAudioSource
@@ -19,10 +20,12 @@ import com.rtts.app.audio.UriAudioSource
 import com.rtts.app.audio.WavFileWriter
 import com.rtts.app.data.SessionEntity
 import com.rtts.app.data.TranscriptSegmentEntity
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import java.io.File
 
 private const val NOTIFICATION_CHANNEL_ID = "rtts_transcription"
@@ -40,6 +43,10 @@ class TranscriptionForegroundService : LifecycleService() {
                 stopCapture()
                 return START_NOT_STICKY
             }
+            ACTION_BENCHMARK -> {
+                runBenchmark()
+                return START_NOT_STICKY
+            }
             else -> {
                 val fileUri = intent?.getStringExtra(EXTRA_FILE_URI)?.let { Uri.parse(it) }
                 val useFileSource = intent?.getBooleanExtra(EXTRA_USE_FILE_SOURCE, true) ?: true
@@ -49,11 +56,32 @@ class TranscriptionForegroundService : LifecycleService() {
         return START_NOT_STICKY
     }
 
+    private fun runBenchmark() {
+        startForeground(NOTIFICATION_ID, buildNotification())
+        lifecycleScope.launch {
+            // Model load + decoding 4 full files back-to-back is minutes of uninterrupted CPU
+            // work with no natural suspension point -- run it off the main thread, or the
+            // service (and the whole app) ANRs, since nothing can service startForeground/
+            // the notification/the binder while Main is pegged like that.
+            val reportFile = withContext(Dispatchers.Default) {
+                BenchmarkRunner.run(this@TranscriptionForegroundService)
+            }
+            android.util.Log.i("RttsBenchmark", "Reporte escrito en: ${reportFile.absolutePath}")
+            stopForeground(STOP_FOREGROUND_REMOVE)
+            stopSelf()
+        }
+    }
+
     private fun startCapture(useFileSource: Boolean, pickedFileUri: Uri?) {
         startForeground(NOTIFICATION_ID, buildNotification())
         _isRunning.value = true
 
-        lifecycleScope.launch {
+        // Loading the model (up to ~18s for `small`) and running VAD/ASR on every chunk is
+        // real CPU work with no natural suspension point. Left on the default Main dispatcher,
+        // this blocks the UI thread long enough to trip Android's ANR watchdog ("la app se ha
+        // detenido") -- same root cause as the benchmark ANR fixed earlier, just never applied
+        // to the production capture path until now.
+        lifecycleScope.launch(Dispatchers.Default) {
             val container = (application as RttsApplication).container
             container.modelManager.ensureModelsExtracted()
 
@@ -162,6 +190,7 @@ class TranscriptionForegroundService : LifecycleService() {
 
     companion object {
         const val ACTION_STOP = "com.rtts.app.action.STOP"
+        const val ACTION_BENCHMARK = "com.rtts.app.action.BENCHMARK"
         const val EXTRA_USE_FILE_SOURCE = "use_file_source"
         const val EXTRA_FILE_URI = "file_uri"
 

@@ -20,13 +20,19 @@ private const val CHUNK_SAMPLES = 3200 // ~200ms at 16kHz
  */
 class FileAudioSource(
     private val context: Context,
-    private val assetNames: List<String> = listOf(
-        "samples/videoejemplo.wav",
-        "samples/ContactoAviones.wav",
-        "samples/WhatsAppAudio.wav",
-        "samples/WhatsAppAudio2.wav",
-    ),
+    private val assetNames: List<String> = DEFAULT_SAMPLES,
 ) : AudioSource {
+
+    companion object {
+        // Shared with the UI layer so background playback (MediaPlayer) plays the exact same
+        // clips, in the exact same order, as what this source feeds into the STT pipeline.
+        val DEFAULT_SAMPLES = listOf(
+            "samples/videoejemplo.wav",
+            "samples/ContactoAviones.wav",
+            "samples/WhatsAppAudio.wav",
+            "samples/WhatsAppAudio2.wav",
+        )
+    }
 
     @Volatile
     private var playing = false

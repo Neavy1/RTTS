@@ -1,0 +1,601 @@
+<title>Plan de Vuelo RTTS</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Public+Sans:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600;700&display=swap">
+<style>
+  :root {
+    --paper: #f4f6fa;
+    --paper-raised: #ffffff;
+    --ink: #101826;
+    --ink-muted: #48536a;
+    --ink-faint: #7c879c;
+    --line: #d9e0ea;
+    --line-strong: #b9c3d4;
+    --brand: #1b3a63;
+    --brand-2: #3e6da6;
+    --amber: #a5720f;
+    --amber-soft: #f2e2c2;
+    --ok: #1e6b3a;
+    --ok-soft: #dcefe1;
+    --warn: #8a5a00;
+    --warn-soft: #faedd2;
+    --blocked: #a02a22;
+    --blocked-soft: #f7dfdc;
+    --shadow: 0 1px 2px rgba(16, 24, 38, 0.06), 0 8px 24px -12px rgba(16, 24, 38, 0.18);
+  }
+
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --paper: #10141b;
+      --paper-raised: #171d28;
+      --ink: #e8ecf2;
+      --ink-muted: #a7b0bf;
+      --ink-faint: #717c8f;
+      --line: #2a3140;
+      --line-strong: #3a4356;
+      --brand: #7fa8dd;
+      --brand-2: #5486c4;
+      --amber: #e3b04b;
+      --amber-soft: #3a2f16;
+      --ok: #6fcf94;
+      --ok-soft: #17301f;
+      --warn: #e3b04b;
+      --warn-soft: #34290f;
+      --blocked: #e5847a;
+      --blocked-soft: #351815;
+      --shadow: 0 1px 2px rgba(0, 0, 0, 0.4), 0 8px 24px -12px rgba(0, 0, 0, 0.6);
+    }
+  }
+  :root[data-theme="dark"] {
+    --paper: #10141b;
+    --paper-raised: #171d28;
+    --ink: #e8ecf2;
+    --ink-muted: #a7b0bf;
+    --ink-faint: #717c8f;
+    --line: #2a3140;
+    --line-strong: #3a4356;
+    --brand: #7fa8dd;
+    --brand-2: #5486c4;
+    --amber: #e3b04b;
+    --amber-soft: #3a2f16;
+    --ok: #6fcf94;
+    --ok-soft: #17301f;
+    --warn: #e3b04b;
+    --warn-soft: #34290f;
+    --blocked: #e5847a;
+    --blocked-soft: #351815;
+    --shadow: 0 1px 2px rgba(0, 0, 0, 0.4), 0 8px 24px -12px rgba(0, 0, 0, 0.6);
+  }
+
+  * { box-sizing: border-box; }
+
+  body {
+    background: var(--paper);
+    color: var(--ink);
+    font-family: 'Public Sans', system-ui, -apple-system, sans-serif;
+    font-size: 16px;
+    line-height: 1.55;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  .page {
+    max-width: 920px;
+    margin: 0 auto;
+    padding: 56px 28px 96px;
+  }
+
+  .mono {
+    font-family: 'JetBrains Mono', ui-monospace, Menlo, monospace;
+    font-variant-numeric: tabular-nums;
+  }
+
+  /* ---------- Header / flight-plan strip ---------- */
+
+  .fpl {
+    border: 1px solid var(--line-strong);
+    border-radius: 10px;
+    background: var(--paper-raised);
+    box-shadow: var(--shadow);
+    overflow: hidden;
+    margin-bottom: 40px;
+  }
+  .fpl-top {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 16px;
+    padding: 22px 26px 18px;
+    border-bottom: 1px solid var(--line);
+  }
+  .fpl-title {
+    font-size: 30px;
+    font-weight: 800;
+    letter-spacing: -0.01em;
+    text-wrap: balance;
+    color: var(--ink);
+  }
+  .fpl-title span { color: var(--brand); }
+  .fpl-sub {
+    color: var(--ink-muted);
+    font-size: 15px;
+    margin-top: 4px;
+  }
+  .fpl-fields {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 1px;
+    background: var(--line);
+  }
+  .fpl-field {
+    background: var(--paper-raised);
+    padding: 14px 20px;
+  }
+  .fpl-field .k {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 10.5px;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--ink-faint);
+    display: block;
+    margin-bottom: 5px;
+  }
+  .fpl-field .v {
+    font-size: 15px;
+    font-weight: 600;
+    color: var(--ink);
+  }
+
+  /* ---------- Sections ---------- */
+
+  section { margin-top: 52px; }
+  .eyebrow {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 12px;
+    font-weight: 600;
+    letter-spacing: 0.09em;
+    text-transform: uppercase;
+    color: var(--brand-2);
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-bottom: 10px;
+  }
+  .eyebrow::after {
+    content: "";
+    height: 1px;
+    flex: 1;
+    background: var(--line);
+  }
+  h2 {
+    font-size: 24px;
+    font-weight: 700;
+    letter-spacing: -0.01em;
+    text-wrap: balance;
+    margin: 0 0 12px;
+  }
+  .lede {
+    color: var(--ink-muted);
+    font-size: 15.5px;
+    max-width: 68ch;
+    margin-bottom: 24px;
+  }
+
+  /* ---------- Status chips ---------- */
+
+  .chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 11.5px;
+    font-weight: 600;
+    letter-spacing: 0.02em;
+    padding: 3px 9px 3px 8px;
+    border-radius: 5px;
+    white-space: nowrap;
+  }
+  .chip::before {
+    content: "";
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: currentColor;
+  }
+  .chip.ok { background: var(--ok-soft); color: var(--ok); }
+  .chip.warn { background: var(--warn-soft); color: var(--warn); }
+  .chip.blocked { background: var(--blocked-soft); color: var(--blocked); }
+
+  /* ---------- Tables ---------- */
+
+  .table-wrap {
+    overflow-x: auto;
+    border: 1px solid var(--line);
+    border-radius: 10px;
+    box-shadow: var(--shadow);
+    background: var(--paper-raised);
+  }
+  table {
+    width: 100%;
+    border-collapse: collapse;
+    min-width: 640px;
+  }
+  th {
+    text-align: left;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 0.07em;
+    text-transform: uppercase;
+    color: var(--ink-faint);
+    padding: 13px 18px;
+    border-bottom: 1px solid var(--line-strong);
+    background: color-mix(in srgb, var(--brand) 4%, var(--paper-raised));
+  }
+  td {
+    padding: 14px 18px;
+    border-bottom: 1px solid var(--line);
+    font-size: 14.5px;
+    vertical-align: top;
+  }
+  tr:last-child td { border-bottom: none; }
+  td.num, th.num { font-family: 'JetBrains Mono', monospace; }
+  td .note { color: var(--ink-muted); font-size: 13px; margin-top: 3px; }
+
+  /* ---------- Roadmap ---------- */
+
+  .roadmap { display: flex; flex-direction: column; gap: 14px; }
+  .week {
+    display: grid;
+    grid-template-columns: 84px 1fr;
+    border: 1px solid var(--line);
+    border-radius: 10px;
+    background: var(--paper-raised);
+    box-shadow: var(--shadow);
+    overflow: hidden;
+  }
+  .week-num {
+    background: var(--brand);
+    color: #fff;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    padding: 16px 8px;
+    gap: 2px;
+  }
+  .week-num .lbl {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 10px;
+    letter-spacing: 0.08em;
+    opacity: 0.85;
+  }
+  .week-num .n {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 26px;
+    font-weight: 700;
+    line-height: 1;
+  }
+  .week-body { padding: 18px 22px; }
+  .week-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    flex-wrap: wrap;
+    margin-bottom: 10px;
+  }
+  .week-head h3 {
+    font-size: 16.5px;
+    font-weight: 700;
+    margin: 0;
+  }
+  .week-grid {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 18px;
+    margin-top: 8px;
+  }
+  .week-grid .k {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 10.5px;
+    letter-spacing: 0.07em;
+    text-transform: uppercase;
+    color: var(--ink-faint);
+    margin-bottom: 5px;
+  }
+  .week-grid .v { font-size: 14px; color: var(--ink); }
+  .week-grid ul { margin: 0; padding-left: 18px; }
+  .week-grid li { margin-bottom: 3px; }
+
+  /* ---------- Footer ---------- */
+
+  footer {
+    margin-top: 64px;
+    padding-top: 22px;
+    border-top: 1px solid var(--line);
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+    gap: 12px;
+    flex-wrap: wrap;
+    color: var(--ink-faint);
+    font-size: 12.5px;
+  }
+  footer .mono { font-size: 12px; }
+
+  @media (max-width: 720px) {
+    .fpl-fields { grid-template-columns: repeat(2, 1fr); }
+    .week { grid-template-columns: 64px 1fr; }
+    .week-grid { grid-template-columns: 1fr; }
+  }
+</style>
+
+<div class="page">
+
+  <div class="fpl">
+    <div class="fpl-top">
+      <div>
+        <div class="fpl-title"><span>RTTS</span> — Plan de Vuelo</div>
+        <div class="fpl-sub">Radio-to-Text Transcription System — estado del proyecto y hoja de ruta semana a semana</div>
+      </div>
+      <span class="chip warn">EN PROGRESO</span>
+    </div>
+    <div class="fpl-fields">
+      <div class="fpl-field"><span class="k">Fase actual</span><span class="v mono">MVP · Fase 1</span></div>
+      <div class="fpl-field"><span class="k">Plataforma destino</span><span class="v mono">iPad (iOS)</span></div>
+      <div class="fpl-field"><span class="k">Repositorio</span><span class="v mono">Neavy1/RTTS</span></div>
+      <div class="fpl-field"><span class="k">Fecha del documento</span><span class="v mono">09/09</span></div>
+    </div>
+  </div>
+
+  <section>
+    <div class="eyebrow">Resumen</div>
+    <h2>Dónde estamos parados</h2>
+    <p class="lede">
+      El motor de transcripción offline ya está probado y funcionando: reconoce comunicación piloto–torre
+      en español e inglés, sin conexión a internet, con una interfaz lista para un operador. Lo que falta
+      es diarización de hablantes, la versión iOS (la plataforma final elegida) y pruebas con el hardware
+      real. Este documento propone cómo llegar ahí, semana a semana.
+    </p>
+  </section>
+
+  <section>
+    <div class="eyebrow">01 · Estado actual</div>
+    <h2>Lo que ya está construido y probado</h2>
+    <p class="lede">Dos fases completadas: un spike de viabilidad y un MVP funcional corriendo en Android.</p>
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr><th style="width:22%">Fase</th><th>Qué se validó</th><th style="width:14%">Estado</th></tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td><strong>Fase 0</strong><div class="note">Spike de viabilidad</div></td>
+            <td>El motor de reconocimiento (Whisper + VAD, vía sherpa-onnx) corre 100% en el dispositivo,
+              sin servidor ni internet. Medido en emulador Android: tiempo de procesamiento menor al de la
+              duración del audio (RTF ≈ 0.7–0.8), es decir, más rápido que tiempo real.</td>
+            <td><span class="chip ok">Completa</span></td>
+          </tr>
+          <tr>
+            <td><strong>Fase 1</strong><div class="note">MVP funcional</div></td>
+            <td>App Android completa: inicio de sesión por PIN, tres formas de capturar audio (línea
+              analógica, muestras de prueba, selector de archivo), transcripción en vivo, historial
+              guardado, reproducción de cada transmisión para verificar de oído, e interfaz visual propia.</td>
+            <td><span class="chip ok">Completa</span></td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <section>
+    <div class="eyebrow">02 · Criterios definidos</div>
+    <h2>Requisitos del proyecto frente a lo entregado</h2>
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr><th style="width:30%">Criterio</th><th style="width:16%">Estado</th><th>Detalle</th></tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>Funciona sin conexión a internet</td>
+            <td><span class="chip ok">Cumplido</span></td>
+            <td>Todo el procesamiento (audio → texto) ocurre en el dispositivo.</td>
+          </tr>
+          <tr>
+            <td>Transcripción en tiempo real</td>
+            <td><span class="chip ok">Cumplido</span></td>
+            <td>El texto aparece a medida que se detectan transmisiones, sin esperar al final del audio.</td>
+          </tr>
+          <tr>
+            <td>Reconoce español e inglés</td>
+            <td><span class="chip ok">Cumplido</span></td>
+            <td>Reintento automático de idioma cuando la primera transcripción parece incorrecta.</td>
+          </tr>
+          <tr>
+            <td>Interfaz por operador (login)</td>
+            <td><span class="chip warn">Suspendido</span></td>
+            <td>Ya construido y probado; desactivado temporalmente para agilizar las pruebas internas.</td>
+          </tr>
+          <tr>
+            <td>Verificar la transcripción escuchando el audio</td>
+            <td><span class="chip ok">Cumplido</span></td>
+            <td>Cada transmisión guarda su propio clip de audio, reproducible desde la lista.</td>
+          </tr>
+          <tr>
+            <td>Identificar quién habla (piloto / torre / otros)</td>
+            <td><span class="chip warn">Pendiente</span></td>
+            <td>Probado por separado en la Fase 0; falta integrarlo al MVP.</td>
+          </tr>
+          <tr>
+            <td>Corre en la plataforma final (iPad)</td>
+            <td><span class="chip blocked">Bloqueado</span></td>
+            <td>El código ya está preparado para compartirse con iOS; falta una Mac para compilarlo.</td>
+          </tr>
+          <tr>
+            <td>Probado con el equipo de radio real</td>
+            <td><span class="chip warn">Pendiente</span></td>
+            <td>Hasta ahora solo se probó con grabaciones de muestra, no con la línea de audio real.</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <section>
+    <div class="eyebrow">03 · Hoja de ruta</div>
+    <h2>Plan semana a semana</h2>
+    <p class="lede">
+      Seis semanas para pasar del MVP de Android a una versión iOS probada en el iPad real, lista para
+      mostrar al interesado. Las semanas 3 en adelante dependen de tener la Mac disponible — ver riesgos.
+    </p>
+
+    <div class="roadmap">
+
+      <div class="week">
+        <div class="week-num"><span class="lbl">SEM</span><span class="n">01</span></div>
+        <div class="week-body">
+          <div class="week-head">
+            <h3>Cerrar el MVP de Android</h3>
+            <span class="chip ok">Sin bloqueos</span>
+          </div>
+          <div class="week-grid">
+            <div><div class="k">Tareas</div><div class="v"><ul>
+              <li>Reactivar el login por PIN</li>
+              <li>Pruebas de estabilidad prolongadas</li>
+              <li>Definir compra o renta de la Mac</li>
+            </ul></div></div>
+            <div><div class="k">Entregable</div><div class="v">Build de Android instalable + video de demo</div></div>
+            <div><div class="k">Criterio de éxito</div><div class="v">10+ minutos de audio real transcrito sin fallos</div></div>
+          </div>
+        </div>
+      </div>
+
+      <div class="week">
+        <div class="week-num"><span class="lbl">SEM</span><span class="n">02</span></div>
+        <div class="week-body">
+          <div class="week-head">
+            <h3>Identificar quién habla</h3>
+            <span class="chip ok">Sin bloqueos</span>
+          </div>
+          <div class="week-grid">
+            <div><div class="k">Tareas</div><div class="v"><ul>
+              <li>Integrar la diarización ya probada en Fase 0</li>
+              <li>Asignar color/etiqueta por hablante en la interfaz</li>
+            </ul></div></div>
+            <div><div class="k">Entregable</div><div class="v">Demo con 2+ hablantes distinguidos por color</div></div>
+            <div><div class="k">Criterio de éxito</div><div class="v">Piloto y torre se identifican como hablantes distintos</div></div>
+          </div>
+        </div>
+      </div>
+
+      <div class="week">
+        <div class="week-num"><span class="lbl">SEM</span><span class="n">03</span></div>
+        <div class="week-body">
+          <div class="week-head">
+            <h3>Arranque del proyecto iOS</h3>
+            <span class="chip blocked">Requiere Mac</span>
+          </div>
+          <div class="week-grid">
+            <div><div class="k">Tareas</div><div class="v"><ul>
+              <li>Compilar el motor de reconocimiento para iOS</li>
+              <li>Crear el proyecto Xcode que usa el código compartido</li>
+            </ul></div></div>
+            <div><div class="k">Entregable</div><div class="v">App corriendo en el simulador de iPhone/iPad</div></div>
+            <div><div class="k">Criterio de éxito</div><div class="v">Una muestra de prueba se transcribe en el simulador</div></div>
+          </div>
+        </div>
+      </div>
+
+      <div class="week">
+        <div class="week-num"><span class="lbl">SEM</span><span class="n">04</span></div>
+        <div class="week-body">
+          <div class="week-head">
+            <h3>Igualar funciones en iOS</h3>
+            <span class="chip blocked">Requiere Mac</span>
+          </div>
+          <div class="week-grid">
+            <div><div class="k">Tareas</div><div class="v"><ul>
+              <li>Captura de audio real (micrófono / línea de entrada)</li>
+              <li>Guardar el PIN de forma segura (Llavero de iOS)</li>
+            </ul></div></div>
+            <div><div class="k">Entregable</div><div class="v">App iOS con el mismo flujo que la de Android</div></div>
+            <div><div class="k">Criterio de éxito</div><div class="v">El mismo audio da el mismo resultado en ambas apps</div></div>
+          </div>
+        </div>
+      </div>
+
+      <div class="week">
+        <div class="week-num"><span class="lbl">SEM</span><span class="n">05</span></div>
+        <div class="week-body">
+          <div class="week-head">
+            <h3>Pruebas con el equipo real</h3>
+            <span class="chip blocked">Requiere iPad + radio</span>
+          </div>
+          <div class="week-grid">
+            <div><div class="k">Tareas</div><div class="v"><ul>
+              <li>Medir velocidad real en el iPad</li>
+              <li>Probar contra la línea de audio del equipo de radio</li>
+              <li>Evaluar si el iPad aguanta un modelo más preciso</li>
+            </ul></div></div>
+            <div><div class="k">Entregable</div><div class="v">Reporte de rendimiento + demo en vivo en el iPad</div></div>
+            <div><div class="k">Criterio de éxito</div><div class="v">Transcripción en tiempo real sostenida en el equipo final</div></div>
+          </div>
+        </div>
+      </div>
+
+      <div class="week">
+        <div class="week-num"><span class="lbl">SEM</span><span class="n">06</span></div>
+        <div class="week-body">
+          <div class="week-head">
+            <h3>Pulido y entrega</h3>
+            <span class="chip ok">Sin bloqueos</span>
+          </div>
+          <div class="week-grid">
+            <div><div class="k">Tareas</div><div class="v"><ul>
+              <li>Manejo de errores y reconexión</li>
+              <li>Manual de instalación</li>
+              <li>Sesión de entrega con el interesado</li>
+            </ul></div></div>
+            <div><div class="k">Entregable</div><div class="v">Build firmada + manual + sesión de entrega</div></div>
+            <div><div class="k">Criterio de éxito</div><div class="v">El interesado instala y usa la app sin ayuda técnica</div></div>
+          </div>
+        </div>
+      </div>
+
+    </div>
+  </section>
+
+  <section>
+    <div class="eyebrow">04 · Riesgos</div>
+    <h2>Qué puede atrasar el plan</h2>
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr><th style="width:26%">Riesgo</th><th style="width:30%">Impacto</th><th>Cómo se mitiga</th></tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>No hay una Mac disponible</td>
+            <td>Detiene todo el trabajo de iOS (semanas 3 a 6 completas)</td>
+            <td>Decidir compra (Mac mini, ~US$600) o renta en la nube durante la Semana 1</td>
+          </tr>
+          <tr>
+            <td>No hay iPad ni equipo de radio real para probar</td>
+            <td>No se puede validar el escenario real de uso antes de la entrega</td>
+            <td>Conseguir al menos un iPad de prueba antes de la Semana 5</td>
+          </tr>
+          <tr>
+            <td>Vocabulario de aviación muy específico</td>
+            <td>Puede necesitar ajuste adicional más allá de lo genérico</td>
+            <td>Evaluar con audio real en la Semana 5 y decidir si hace falta afinar el modelo</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <footer>
+    <span class="mono">RTTS / Radio-to-Text Transcription System</span>
+    <span class="mono">Plan propuesto — sujeto a ajuste según prioridades</span>
+  </footer>
+
+</div>

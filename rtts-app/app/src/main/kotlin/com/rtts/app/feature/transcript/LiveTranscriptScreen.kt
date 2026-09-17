@@ -47,8 +47,10 @@ import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.foundation.border
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
@@ -57,13 +59,16 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.rtts.app.RttsApplication
+import com.rtts.app.audio.FileAudioSource
 import com.rtts.app.data.TranscriptSegmentEntity
 import com.rtts.app.pipeline.TranscriptionForegroundService
 import com.rtts.app.ui.theme.RttsAmber
 import com.rtts.app.ui.theme.colorForSpeaker
+import kotlinx.coroutines.delay
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -82,13 +87,24 @@ fun LiveTranscriptScreen() {
         }
     }
 
+    val backgroundPlayer = remember { BackgroundAudioPlayer(context) }
+    DisposableEffect(Unit) { onDispose { backgroundPlayer.release() } }
+    var pendingPlayback by remember { mutableStateOf<PlaybackSource?>(null) }
+    LaunchedEffect(isRunning) {
+        if (isRunning) pendingPlayback?.let { backgroundPlayer.play(it) } else backgroundPlayer.stop()
+    }
+
     val filePicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
-        if (uri != null) startTranscriptionOfFile(context, uri)
+        if (uri != null) {
+            pendingPlayback = PlaybackSource.PickedFile(uri)
+            startTranscriptionOfFile(context, uri)
+        }
     }
 
     val player = remember { SegmentAudioPlayer() }
     DisposableEffect(Unit) { onDispose { player.release() } }
     val playingSegmentId by player.playingSegmentId
+    val seenSegmentIds = remember { mutableStateListOf<Long>() }
 
     Scaffold(
         topBar = {
@@ -117,7 +133,10 @@ fun LiveTranscriptScreen() {
         Column(modifier = Modifier.fillMaxSize().padding(padding)) {
             ControlBar(
                 isRunning = isRunning,
-                onStart = { startTranscriptionOfSamples(context) },
+                onStart = {
+                    pendingPlayback = PlaybackSource.Samples
+                    startTranscriptionOfSamples(context)
+                },
                 onStop = { stopTranscription(context) },
                 onPickFile = { filePicker.launch(arrayOf("audio/*", "video/mp4", "video/*")) },
             )
@@ -129,11 +148,17 @@ fun LiveTranscriptScreen() {
                     contentPadding = PaddingValues(16.dp),
                     verticalArrangement = Arrangement.spacedBy(10.dp),
                 ) {
-                    items(segments) { segment ->
+                    items(segments, key = { it.id }) { segment ->
+                        val isNewArrival = remember(segment.id) { segment.id !in seenSegmentIds }
+                        LaunchedEffect(segment.id) { seenSegmentIds.add(segment.id) }
                         TranscriptCard(
                             segment = segment,
                             isPlaying = segment.id == playingSegmentId,
-                            onPlayToggle = { player.toggle(segment) },
+                            animateText = isNewArrival,
+                            onPlayToggle = {
+                                backgroundPlayer.stop()
+                                player.toggle(segment)
+                            },
                         )
                     }
                 }
@@ -170,8 +195,8 @@ private fun LiveCaptionBar(latest: TranscriptSegmentEntity) {
                 }
             }
             Spacer(Modifier.width(12.dp))
-            Text(
-                latest.text,
+            TypewriterText(
+                text = latest.text,
                 style = MaterialTheme.typography.titleMedium,
                 fontWeight = FontWeight.Bold,
                 maxLines = 2,
@@ -261,6 +286,7 @@ private fun EmptyState(isRunning: Boolean) {
 private fun TranscriptCard(
     segment: TranscriptSegmentEntity,
     isPlaying: Boolean,
+    animateText: Boolean,
     onPlayToggle: () -> Unit,
 ) {
     val speakerColor = colorForSpeaker(segment.speakerLabel)
@@ -306,10 +332,11 @@ private fun TranscriptCard(
                     }
                 }
                 Spacer(Modifier.width(4.dp))
-                Text(
-                    segment.text,
+                TypewriterText(
+                    text = segment.text,
                     style = MaterialTheme.typography.bodyLarge,
                     modifier = Modifier.padding(top = 6.dp),
+                    animate = animateText,
                 )
             }
         }
@@ -354,6 +381,102 @@ private fun LanguageChip(lang: String) {
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
     }
+}
+
+/**
+ * Reveals text word by word instead of all at once, so a freshly-arrived transcript reads like
+ * it's being typed into a chat rather than snapping into place. [animate] is false for segments
+ * the screen has already shown once (e.g. after a recomposition/scroll), so re-renders don't
+ * replay the animation.
+ */
+@Composable
+private fun TypewriterText(
+    text: String,
+    modifier: Modifier = Modifier,
+    style: TextStyle = MaterialTheme.typography.bodyLarge,
+    fontWeight: FontWeight? = null,
+    maxLines: Int = Int.MAX_VALUE,
+    animate: Boolean = true,
+) {
+    var visibleChars by remember(text) { mutableStateOf(if (animate) 0 else text.length) }
+    LaunchedEffect(text, animate) {
+        if (!animate) {
+            visibleChars = text.length
+            return@LaunchedEffect
+        }
+        visibleChars = 0
+        val builder = StringBuilder()
+        for (word in text.split(" ")) {
+            if (builder.isNotEmpty()) builder.append(' ')
+            builder.append(word)
+            visibleChars = builder.length
+            delay(55L)
+        }
+    }
+    Text(
+        text = text.take(visibleChars),
+        modifier = modifier,
+        style = style,
+        fontWeight = fontWeight,
+        maxLines = maxLines,
+    )
+}
+
+/** What to play in the background for the capture that was just started. */
+private sealed interface PlaybackSource {
+    data object Samples : PlaybackSource
+    data class PickedFile(val uri: Uri) : PlaybackSource
+}
+
+/**
+ * Plays the original source audio in the background while the pipeline transcribes it, so an
+ * operator hears the transmission as captions settle in. Independent from [SegmentAudioPlayer],
+ * which replays one already-finished segment on demand -- starting one stops the other so they
+ * never talk over each other.
+ */
+private class BackgroundAudioPlayer(private val context: Context) {
+    private var mediaPlayer: MediaPlayer? = null
+
+    fun play(source: PlaybackSource) {
+        stop()
+        when (source) {
+            is PlaybackSource.Samples -> {
+                val player = MediaPlayer().apply { setOnErrorListener { _, _, _ -> true } }
+                mediaPlayer = player
+                playSampleSequence(player, FileAudioSource.DEFAULT_SAMPLES, 0)
+            }
+            is PlaybackSource.PickedFile -> {
+                mediaPlayer = MediaPlayer().apply {
+                    setOnErrorListener { _, _, _ -> true }
+                    setOnCompletionListener { it.release() }
+                    setDataSource(context, source.uri)
+                    prepare()
+                    start()
+                }
+            }
+        }
+    }
+
+    private fun playSampleSequence(player: MediaPlayer, assets: List<String>, index: Int) {
+        if (index >= assets.size) return
+        context.assets.openFd(assets[index]).use { afd ->
+            player.reset()
+            player.setDataSource(afd.fileDescriptor, afd.startOffset, afd.length)
+        }
+        player.setOnCompletionListener { playSampleSequence(player, assets, index + 1) }
+        player.prepare()
+        player.start()
+    }
+
+    fun stop() {
+        mediaPlayer?.let {
+            it.setOnCompletionListener(null)
+            it.release()
+        }
+        mediaPlayer = null
+    }
+
+    fun release() = stop()
 }
 
 /**
