@@ -1,0 +1,81 @@
+<!doctype html>
+<html lang="es"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>RTTS · Revisión de audio ATC</title>
+<style>
+body{font:17px/1.5 system-ui;background:#f2f5f9;color:#19334d;margin:0}header{background:#193b60;color:white;padding:24px max(24px,calc((100% - 1000px)/2))}main{max-width:1000px;margin:auto;padding:24px}h1{margin:0;font-size:28px}h2{font-size:19px}section{background:white;border:1px solid #d5deea;border-radius:16px;padding:24px;margin:20px 0}button,select,input,textarea{font:inherit;padding:10px;border:1px solid #899db3;border-radius:8px;box-sizing:border-box}button{background:#20496d;color:white;cursor:pointer}button:disabled{opacity:.5;cursor:default}textarea{width:100%;min-height:125px}label{display:block;margin:16px 0 6px}audio{width:100%;margin:15px 0}.row{display:flex;flex-wrap:wrap;gap:12px;align-items:center}.muted{color:#52677c}#notice{font-weight:600}details{margin-top:16px}summary{cursor:pointer}small{display:block}#clipSelect{max-width:100%}a{color:#20496d}
+</style>
+<header><h1>RTTS · Escuchar, corregir, comprobar</h1><div>Referencias humanas para especializar el reconocimiento aeronáutico</div></header>
+<main>
+<p>Escribe lo que realmente escuchas. Conserva las palabras de los números y no completes instrucciones por contexto. Los cortes son de duración fija: marca como ininteligible un fragmento que no puedas transcribir fielmente.</p>
+<div class="row"><button id="download">Guardar referencias JSONL</button><label style="margin:0">Recuperar revisión <input id="upload" type="file" accept=".jsonl"></label></div>
+<p id="notice" role="status">Los cambios viven en esta pestaña. Descarga el archivo antes de cerrar o recargar.</p>
+<section><div class="row"><button id="prev">Anterior</button><select id="clipSelect" aria-label="Fragmento"></select><button id="next">Siguiente</button></div>
+<h2 id="title"></h2><p id="meta" class="muted"></p><audio id="audio" controls preload="none"></audio>
+<div id="draftBox" hidden><h2>Borrador del modelo · sin verificar</h2><p id="draftMeta" class="muted"></p><p id="draftText" style="white-space:pre-wrap"></p><button id="copyDraft">Usar como punto de partida</button><small>Escucha el audio y corrige cada error. Copiar mantiene el estado Pendiente.</small></div>
+<div id="alternativeBox" hidden><h2>Segunda decodificación · sin verificar</h2><p id="alternativeText" style="white-space:pre-wrap"></p><small>Comparación experimental con otra configuración. No se selecciona automáticamente como texto correcto.</small></div>
+<div class="row"><div><label for="status">Estado</label><select id="status"><option value="pending">Pendiente</option><option value="verified">Texto verificado</option><option value="unintelligible">Ininteligible / corte incompleto</option><option value="no_speech">Sin voz (revisado)</option></select></div>
+<div><label for="language">Idioma</label><select id="language"><option value="en">English ATC</option></select></div>
+<div><label for="reviewer">Revisado por</label><input id="reviewer" autocomplete="name"></div></div>
+<label for="text">Transcripción literal</label><textarea id="text" placeholder="Escucha primero; no uses el vocabulario para adivinar."></textarea>
+<label for="critical">Elementos críticos (una línea por elemento)</label><small class="muted">Formato: categoría | palabras exactas del texto. Categorías: callsign, frequency, runway, altitude, heading, squawk, negation, instruction.</small>
+<textarea id="critical" placeholder="frequency | one two one decimal five&#10;negation | unable"></textarea>
+<label for="notes">Notas de revisión</label><textarea id="notes" placeholder="Ruido, duda, acento, palabra cortada…"></textarea>
+</section>
+<details><summary>Vocabulario de referencia FAA · inglés</summary><p>__VOCABULARY__</p><p>Lista parcial; no transforma ni corrige automáticamente tu texto.</p></details>
+<p class="muted" id="progress"></p>
+</main>
+<script>
+const original=__MANIFEST__;
+let rows=structuredClone(original), index=0, dirty=false;
+const $=id=>document.getElementById(id);
+const fields=['status','language','reviewer','text','notes'];
+const categories=new Set(['callsign','frequency','runway','altitude','heading','squawk','negation','instruction']);
+function save(){
+ const row=rows[index]; fields.forEach(k=>row[k]=$(k).value);
+ row.critical=$('critical').value.split('\n').filter(x=>x.trim()).map(line=>{const [category,...rest]=line.split('|');return {category:category.trim(),text:rest.join('|').trim()}});
+}
+function show(){
+ const row=rows[index]; $('title').textContent=row.id;
+ $('meta').textContent=`${row.split} · desde ${row.start_s.toFixed(1)} s · duración ${row.duration_s.toFixed(1)} s · fuente ${row.source_group}`;
+ $('audio').src=row.audio; fields.forEach(k=>$(k).value=row[k]);
+ $('draftBox').hidden=!row.draft;
+ $('draftText').textContent=row.draft?.text||'';
+ $('draftMeta').textContent=row.draft?`Idioma detectado: ${row.draft.detected_language||'desconocido'}. Puede inventar palabras o números.`:'';
+ $('copyDraft').disabled=Boolean(row.text.trim());
+ $('alternativeBox').hidden=!row.alternative;
+ $('alternativeText').textContent=row.alternative?`Idioma: ${row.alternative.detected_language||'desconocido'}\n${row.alternative.text}`:'';
+ $('critical').value=row.critical.map(x=>`${x.category} | ${x.text}`).join('\n');
+ $('clipSelect').value=index; $('prev').disabled=index===0; $('next').disabled=index===rows.length-1;
+ $('progress').textContent=`${rows.filter(r=>['verified','no_speech'].includes(r.status)).length} de ${rows.length} fragmentos marcados como revisados. Descarga y valida el JSONL antes de evaluar.`;
+}
+rows.forEach((row,i)=>{const option=document.createElement('option');option.value=i;option.textContent=`${i+1}. ${row.id}`;$('clipSelect').append(option)});
+$('copyDraft').onclick=()=>{if(rows[index].text.trim()||!rows[index].draft)return;$('text').value=rows[index].draft.text;$('status').value='pending';dirty=true;save();show()};
+function change(i){save();index=i;show()}
+$('prev').onclick=()=>change(index-1);$('next').onclick=()=>change(index+1);$('clipSelect').onchange=e=>change(Number(e.target.value));
+for(const field of [...fields,'critical']) $(field).addEventListener('input',()=>{dirty=true;save()});
+$('download').onclick=()=>{
+ save();
+ for(const row of rows){
+  if(['verified','no_speech'].includes(row.status)&&(!row.reviewer.trim()||(row.status==='verified'&&(!row.text.trim()||row.language==='unknown'))||(row.status==='no_speech'&&row.text.trim()))){$('notice').textContent=`Revisa texto, idioma y revisor de ${row.id}.`;return}
+  if(row.critical.some(x=>!categories.has(x.category)||!x.text)){$('notice').textContent=`Elemento crítico inválido en ${row.id}.`;return}
+ }
+ const blob=new Blob([rows.map(r=>JSON.stringify(r)).join('\n')+'\n'],{type:'application/x-ndjson'});
+ const url=URL.createObjectURL(blob),a=document.createElement('a');a.href=url;a.download='referencias.jsonl';a.click();setTimeout(()=>URL.revokeObjectURL(url),1000);
+ dirty=false;$('notice').textContent='Descarga solicitada. Guarda referencias.jsonl junto a manifest.jsonl y ejecuta validate.';
+};
+$('upload').onchange=async e=>{
+ try{
+  const imported=(await e.target.files[0].text()).split(/\r?\n/).filter(x=>x.trim()).map(JSON.parse);
+  if(imported.length!==original.length||new Set(imported.map(x=>x.id)).size!==original.length)throw Error('Cantidad o IDs incorrectos');
+  const map=new Map(imported.map(r=>[r.id,r]));
+  const merged=original.map(base=>{
+   const r=map.get(base.id);
+   if(!r||r.audio_sha256!==base.audio_sha256||fields.some(k=>typeof r[k]!=='string')||!Array.isArray(r.critical))throw Error('Formato o audio diferente');
+   return {...base,...Object.fromEntries(fields.map(k=>[k,r[k]])),critical:r.critical};
+  });
+  rows=merged;dirty=false;show();$('notice').textContent='Revisión recuperada. Descarga de nuevo cuando termines.';
+ }catch(error){$('notice').textContent='No se pudo importar: '+error.message}
+};
+window.addEventListener('beforeunload',e=>{if(dirty){e.preventDefault();e.returnValue=''}});
+show();
+</script></html>

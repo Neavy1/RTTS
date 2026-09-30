@@ -4,6 +4,20 @@ App para tablet que transcribe en vivo la comunicación de radio piloto ↔ torr
 
 > Este documento está escrito para que cualquiera (humano o IA) que retome el proyecto entienda en minutos qué existe, qué se decidió y por qué, y qué falta. Si vas a tocar código aquí, léelo completo antes de empezar.
 
+## Mejoras de reconocimiento e interfaz (22/09/2026)
+
+- La pantalla distingue preparación del modelo, transcripción, cierre, finalización y error. Muestra audio recibido y segmentos; la salida se presenta completa al llegar.
+- El reconocimiento está fijado a **English ATC** en la interfaz, el servicio, Whisper y las herramientas locales. La prueba con `videoejemplo.mp4` mostró cambios erróneos a árabe, japonés y español cuando se usaba autodetección.
+- Los archivos importados usan un Flow que espera al consumidor: no se descartan chunks cuando Whisper está ocupado y el flujo termina al alcanzar el fin del archivo. Se liberan decoder y extractor incluso si se cancela o falla.
+- Las muestras WAV se leen recorriendo los chunks RIFF, incluidos metadatos y padding, en lugar de asumir una cabecera de 44 bytes.
+- La detección de bucles normaliza puntuación y conserva readbacks predominantemente numéricos. Repeticiones y escrituras árabe/CJK se muestran como `[INAUDIBLE]`; marcadores de silencio se descartan.
+- Detener deja terminar el trabajo nativo y vacía el VAD antes de liberar el motor. Se impiden inicios simultáneos y se cierra la sesión en Room. En micrófono, la saturación de la cola pasa a ser un error explícito en vez de pérdida silenciosa.
+- La reproducción original es opcional y empieza después de cargar el modelo; puede adelantarse al texto. Se mantiene la reproducción individual de segmentos.
+
+No se cambiaron los pesos de Whisper ni los umbrales del VAD. Contra los subtítulos provisionales de `videoejemplo.mp4`, VAD redujo WER de 86.5% a 66.3%, aumentó conceptos ATC recuperados de 33.3% a 77.8% y eliminó texto en la cola silenciosa. Los subtítulos contienen errores y deben corregirse de oído antes de entrenar.
+
+Pruebas de regresión Android/JVM: `gradle :shared:testDebugUnitTest`. Build: `gradle :app:assembleDebug`. El lint global tiene un bloqueo previo en `:shared:bundleDebugLocalLintAar` por la dependencia AAR local de sherpa-onnx.
+
 ## Estado actual (17 de septiembre de 2026)
 
 **Decisión de arquitectura vigente: nos quedamos con sherpa-onnx + Whisper. No se migra a whisper.cpp.** Se evaluó explícitamente la migración y se descartó tras una auditoría con datos reales — ver "Auditoría de producción" abajo. Cualquier sugerencia futura de cambiar el motor de inferencia debe justificarse contra esos datos, no contra preferencia genérica.
@@ -13,8 +27,8 @@ Lo que funciona hoy, probado end-to-end en emulador Android (Pixel Tablet, Andro
 - Transcripción 100% local (Whisper `small` int8 vía sherpa-onnx/ONNX Runtime), sin red.
 - Pipeline completo: `MediaExtractor/MediaCodec → PCM → resample 16kHz mono → VAD (Silero) → Whisper → Room → UI en vivo`.
 - Reproducción de audio: tanto reproducción bajo demanda de cada segmento ya transcrito (para verificar de oído) como reproducción del audio original **en segundo plano mientras se transcribe** (para escuchar la transmisión mientras el texto va apareciendo).
-- El texto de cada transcripción aparece palabra por palabra (estilo chat), no de golpe.
-- Reintento automático de idioma (es→en→es) cuando Whisper detecta un idioma fuera de es/en o el texto tiene pinta de alucinación (bucle de repetición).
+- Cada segmento aparece completo en cuanto Whisper lo termina; la interfaz no oculta palabras ya reconocidas detrás de una animación.
+- Decodificación fija en inglés ATC; no existe una ruta de autodetección que pueda cambiar de idioma durante una transmisión corta.
 - Login por PIN construido y probado, **pero suspendido temporalmente** (`MainActivity.kt`, `startDestination = "transcript"`) para agilizar las pruebas — el código sigue intacto en `feature/login/`, solo hay que restaurar `startDestination = "login"` cuando se retome.
 
 ### Bug de ANR corregido (17/09/2026)
@@ -37,7 +51,7 @@ Desglose de latencia (con `small`): **97.3% del tiempo es inferencia de Whisper*
 Hallazgos pendientes de corregir (no bloquean producción, pero están documentados y localizados):
 
 1. **Arranque en frío**: el primer segmento tras cargar el modelo tuvo RTF 1.78x (vs. 0.35x global). Se resolvería precargando el modelo al iniciar la app en vez de al primer `startCapture()`.
-2. **Bug real en el detector de alucinaciones** (`looksLikeHallucination()` en `SherpaOnnxSttEngine.kt`): compara palabras sin separar puntuación, así que una repetición real detectada en la salida de `tiny` ("todo el chero, todo el chero...") no fue marcada como alucinación porque "todo," ≠ "todo" como tokens.
+2. **Corregido en esta revisión — detector de alucinaciones** (`looksLikeHallucination()` en `SherpaOnnxSttEngine.kt`): compara palabras sin separar puntuación, así que una repetición real detectada en la salida de `tiny` ("todo el chero, todo el chero...") no fue marcada como alucinación porque "todo," ≠ "todo" como tokens.
 3. **`AudioResampler` sin filtro anti-aliasing**: hace decimación por vecino más cercano al bajar a 16kHz. Riesgo si entra audio que no viene ya en 16kHz mono (no ha causado problemas observados todavía, pero no está probado con esa condición).
 4. **Todo lo medido es en emulador x86_64**, no representa rendimiento real en tablet ARM. Sigue siendo el hueco más importante antes de dar por cerrada la fase de producción: falta un dispositivo Android físico para validar.
 
@@ -59,7 +73,7 @@ Se decidió qué comprar: **MacBook Air 15" (chip M4), 16 GB de RAM como mínimo
 
 Pipeline de captura (`TranscriptionForegroundService.startCapture()`): `AudioSource.start()` (Flow de chunks PCM) → `SttEngine.acceptAudioChunk()` (VAD, devuelve segmentos completos de voz) → `SttEngine.transcribe()` por segmento → persistencia en Room → la UI observa Room vía `Flow` y se actualiza sola. Todo corre en `Dispatchers.Default`, nunca en el hilo principal (ver nota de ANR arriba).
 
-Configuración actual de `SherpaOnnxSttEngine`: VAD Silero con `threshold=0.6`, `minSpeechDuration=0.3s`, `minSilenceDuration=0.5s`, `maxSpeechDuration=20s`; 4 threads; `task="transcribe"` (nunca traduce); reintento de idioma en cadena es→en→es cuando el resultado no es es/en o parece alucinado.
+Configuración actual de `SherpaOnnxSttEngine`: VAD Silero con `threshold=0.6`, `minSpeechDuration=0.3s`, `minSilenceDuration=0.5s`, `maxSpeechDuration=20s`; 4 threads; `task="transcribe"` (nunca traduce); `language="en"` fijo y filtro de alucinaciones/rechazo de escrituras ajenas al inglés ATC.
 
 ## Requisitos para compilar
 
@@ -87,6 +101,12 @@ Descarga:
 `small` es el tamaño de modelo en producción, confirmado por la auditoría del 17/09/2026 (tabla arriba). No cambiar a `tiny`/`base` sin repetir ese benchmark — ambos alucinan con más frecuencia en frases ATC cortas.
 
 ## Compilar
+
+En Android, **Revisión ATC** permite escuchar segmentos históricos, guardar correcciones, grabar ejemplos y exportar audio + registros en ZIP mediante el selector de archivos del sistema. El [formato de exportación e importación](training/atc/MOBILE_EXPORT.md) conserva texto original, referencia pronunciada y formato visual por separado. No entrena automáticamente el modelo.
+
+La [página pública de revisión](https://rtts-revision-atc.luifduquetab.chatgpt.site) permite que otras personas corrijan desde el teléfono ocho fragmentos de `videoejemplo.mp4`, sin instalar la app. Su código está en un repositorio web separado; las respuestas se guardan en D1 y deben recuperarse y adjudicarse antes de incorporarlas al conjunto local. El nombre escrito en la página no autentica a nadie; cualquier persona con el enlace puede escuchar los audios y enviar respuestas.
+
+La preparación de vocabulario, referencias y evaluación para especializar Whisper en comunicaciones aeronáuticas está en [training/atc](training/atc/README.md). Incluye revisión local de audio, separación por grabación y medición de WER; aún no representa un modelo reentrenado.
 
 ```
 cd rtts-app
@@ -124,7 +144,7 @@ En orden de impacto:
 
 1. **Probar en un dispositivo Android físico (ARM)** — el hueco más importante ahora mismo. Todo lo medido es en emulador x86_64.
 2. Precargar el modelo al iniciar la app (elimina el arranque en frío, hallazgo #1 de la auditoría).
-3. Corregir `looksLikeHallucination()` para tokenizar sin puntuación (hallazgo #2).
+3. Validar con referencias ATC el detector de repeticiones corregido (hallazgo #2).
 4. Evaluar si hace falta un filtro anti-aliasing en `AudioResampler` (hallazgo #3) — solo si empieza a entrar audio que no está ya en 16kHz.
 5. Comprar el MacBook Air 15" y arrancar la implementación de `iosMain/` en el orden descrito arriba.
 6. Restaurar el login (`startDestination = "login"` en `MainActivity.kt`) cuando se retome el flujo de autenticación de verdad.

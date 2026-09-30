@@ -1,0 +1,4 @@
+# Experimental recipe; full training environment has not yet been executed.
+torch==2.9.0
+transformers==4.57.1
+numpy==2.3.5

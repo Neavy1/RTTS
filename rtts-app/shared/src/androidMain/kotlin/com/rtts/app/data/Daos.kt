@@ -35,6 +35,9 @@ interface SessionDao {
 
 @Dao
 interface TranscriptSegmentDao {
+    @Query("SELECT * FROM transcript_segments ORDER BY createdAtEpochMs DESC")
+    fun observeAll(): Flow<List<TranscriptSegmentEntity>>
+
     @Insert
     suspend fun insert(segment: TranscriptSegmentEntity): Long
 

@@ -4,10 +4,10 @@ import android.content.Context
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.flow
-import java.io.DataInputStream
+import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.ensureActive
 
 private const val SAMPLE_RATE = 16000
-private const val WAV_HEADER_BYTES = 44
 private const val CHUNK_SAMPLES = 3200 // ~200ms at 16kHz
 
 /**
@@ -42,19 +42,12 @@ class FileAudioSource(
         for (assetName in assetNames) {
             if (!playing) break
             context.assets.open(assetName).use { raw ->
-                val input = DataInputStream(raw)
-                input.skipBytes(WAV_HEADER_BYTES)
-                val byteBuffer = ByteArray(CHUNK_SAMPLES * 2)
+                val input = PcmWavReader(raw)
                 while (playing) {
-                    val read = input.read(byteBuffer)
-                    if (read <= 0) break
-                    val sampleCount = read / 2
-                    val samples = FloatArray(sampleCount) { i ->
-                        val lo = byteBuffer[i * 2].toInt() and 0xFF
-                        val hi = byteBuffer[i * 2 + 1].toInt()
-                        val sample = (hi shl 8) or lo
-                        sample.toShort() / 32768.0f
-                    }
+                    currentCoroutineContext().ensureActive()
+                    val samples = input.readSamples(CHUNK_SAMPLES)
+                    if (samples.isEmpty()) break
+                    val sampleCount = samples.size
                     emit(AudioChunk(samples, SAMPLE_RATE))
                     delay(sampleCount * 1000L / SAMPLE_RATE)
                 }

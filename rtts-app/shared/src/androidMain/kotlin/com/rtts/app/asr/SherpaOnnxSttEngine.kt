@@ -9,30 +9,12 @@ import com.k2fsa.sherpa.onnx.SileroVadModelConfig
 import com.k2fsa.sherpa.onnx.Vad
 import com.k2fsa.sherpa.onnx.VadModelConfig
 
-/** Languages the ATC comms are expected to be in. Anything else is treated as a mis-detection. */
-private val EXPECTED_LANGUAGES = setOf("es", "en")
-
-/**
- * Cheap detector for Whisper's repetition-loop failure mode ("shoot or shoot or shoot..."),
- * which tends to show up on ambiguous/noisy segments. Flags text with very few distinct words
- * relative to its length. Public (not just a private engine detail) so benchmark tooling can
- * flag the same failure mode when comparing models.
- */
-fun looksLikeHallucination(text: String): Boolean {
-    val words = text.trim().lowercase().split(Regex("\\s+")).filter { it.isNotBlank() }
-    if (words.size < 6) return false
-    val uniqueRatio = words.toSet().size.toDouble() / words.size
-    return uniqueRatio < 0.45
-}
-
 /**
  * Wraps sherpa-onnx's VAD (transmission segmentation) and Whisper (speech-to-text).
  *
- * Whisper's automatic language detection is unreliable on short (<5s) push-to-talk
- * transmissions -- found during the Fase 0 spike, where clips were mis-detected as
- * Japanese/Arabic/Portuguese instead of es/en. As a cheap mitigation, when the
- * auto-detected language falls outside the expected es/en set, we redecode once
- * forcing English (statistically the more common mis-detection case for ATC audio).
+ * RTTS currently targets English ATC. The language is deliberately forced because the
+ * video benchmark showed that automatic detection changed short transmissions to Arabic,
+ * Japanese and Spanish. Callers cannot silently re-enable automatic language detection.
  */
 class SherpaOnnxSttEngine(modelManager: ModelManager, val numThreads: Int = 4) : SttEngine {
 
@@ -49,7 +31,7 @@ class SherpaOnnxSttEngine(modelManager: ModelManager, val numThreads: Int = 4) :
     var totalDecodeNanos: Long = 0
         private set
 
-    /** How many of the [transcribe] calls needed a language retry (auto-detect or hallucination check failed). */
+    /** Kept for benchmark compatibility. English-only decoding never retries another language. */
     var retriedSegmentCount: Int = 0
         private set
 
@@ -57,7 +39,7 @@ class SherpaOnnxSttEngine(modelManager: ModelManager, val numThreads: Int = 4) :
         baseWhisperConfig = OfflineWhisperModelConfig(
             encoder = modelManager.whisperEncoderPath,
             decoder = modelManager.whisperDecoderPath,
-            language = "",
+            language = ATC_LANGUAGE,
             task = "transcribe",
         )
         val modelConfig = OfflineModelConfig(
@@ -84,7 +66,10 @@ class SherpaOnnxSttEngine(modelManager: ModelManager, val numThreads: Int = 4) :
             sampleRate = 16000,
             numThreads = 1,
         )
-        vad = Vad(config = vadModelConfig)
+        vad = try { Vad(config = vadModelConfig) } catch (e: Exception) {
+            recognizer.release()
+            throw e
+        }
     }
 
     override fun acceptAudioChunk(samples: FloatArray): List<AudioSegment> {
@@ -121,21 +106,7 @@ class SherpaOnnxSttEngine(modelManager: ModelManager, val numThreads: Int = 4) :
     }
 
     private fun transcribeInternal(samples: FloatArray, sampleRate: Int): TranscriptResult {
-        val first = decodeOnce(samples, sampleRate, language = "")
-        if (first.text.isBlank()) return first
-        if (first.lang in EXPECTED_LANGUAGES && !looksLikeHallucination(first.text)) return first
-
-        // Either the auto-detected language was outside es/en, or the text itself looks like
-        // a hallucination loop (e.g. "shoot or shoot or shoot..."). Retry forcing the other
-        // expected language -- and if that still looks bad, try the remaining one as a
-        // last resort. At most 3 decodes total, and only for audio that already failed once.
-        retriedSegmentCount++
-        val retryLang = if (first.lang == "es") "en" else "es"
-        val second = decodeOnce(samples, sampleRate, language = retryLang)
-        if (second.text.isBlank() || !looksLikeHallucination(second.text)) return second
-
-        val lastLang = if (retryLang == "es") "en" else "es"
-        return decodeOnce(samples, sampleRate, language = lastLang)
+        return validateEnglishAtcResult(decodeOnce(samples, sampleRate, language = ATC_LANGUAGE))
     }
 
     private fun decodeOnce(samples: FloatArray, sampleRate: Int, language: String): TranscriptResult {
@@ -147,19 +118,27 @@ class SherpaOnnxSttEngine(modelManager: ModelManager, val numThreads: Int = 4) :
             )
             recognizer.setConfig(forcedConfig)
         }
-        val stream = recognizer.createStream()
-        stream.acceptWaveform(samples, sampleRate = sampleRate)
-        recognizer.decode(stream)
-        val result = recognizer.getResult(stream)
-        stream.release()
-        if (language != baseWhisperConfig.language) {
-            recognizer.setConfig(baseRecognizerConfig)
+        try {
+            val stream = recognizer.createStream()
+            try {
+                stream.acceptWaveform(samples, sampleRate = sampleRate)
+                recognizer.decode(stream)
+                val result = recognizer.getResult(stream)
+                return TranscriptResult(text = result.text, lang = result.lang)
+            } finally {
+                stream.release()
+            }
+        } finally {
+            if (language != baseWhisperConfig.language) recognizer.setConfig(baseRecognizerConfig)
         }
-        return TranscriptResult(text = result.text, lang = result.lang)
     }
 
     override fun release() {
         vad.release()
         recognizer.release()
+    }
+
+    private companion object {
+        const val ATC_LANGUAGE = "en"
     }
 }
