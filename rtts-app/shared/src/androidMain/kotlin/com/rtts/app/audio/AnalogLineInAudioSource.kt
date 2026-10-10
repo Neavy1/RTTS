@@ -9,7 +9,10 @@ import android.media.AudioManager
 import android.media.AudioRecord
 import android.media.MediaRecorder
 import androidx.core.content.ContextCompat
-import kotlinx.coroutines.channels.awaitClose
+import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.ensureActive
+
+import kotlinx.coroutines.flow.buffer
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.callbackFlow
 import kotlinx.coroutines.flow.flowOn
@@ -42,20 +45,28 @@ class AnalogLineInAudioSource(private val context: Context) : AudioSource {
         audioRecord = record
         preferExternalInputDevice(record)
 
-        record.startRecording()
-        recording = true
+        try {
+            record.startRecording()
+            recording = true
 
-        val shortBuffer = ShortArray(CHUNK_SAMPLES * sampleRate / TARGET_SAMPLE_RATE)
-        while (recording) {
-            val read = record.read(shortBuffer, 0, shortBuffer.size)
-            if (read > 0) {
-                val floatSamples = AudioResampler.toMono16kFloats(shortBuffer, read, 1, sampleRate)
-                trySend(AudioChunk(floatSamples, TARGET_SAMPLE_RATE))
+            val shortBuffer = ShortArray(CHUNK_SAMPLES * sampleRate / TARGET_SAMPLE_RATE)
+            while (recording) {
+                currentCoroutineContext().ensureActive()
+                val read = record.read(shortBuffer, 0, shortBuffer.size)
+                if (read > 0) {
+                    val floatSamples = AudioResampler.toMono16kFloats(shortBuffer, read, 1, sampleRate)
+                    if (trySend(AudioChunk(floatSamples, TARGET_SAMPLE_RATE)).isFailure) {
+                        error("La entrada de audio supera la capacidad de transcripción. Detén otras tareas e inténtalo de nuevo.")
+                    }
+                } else if (read < 0) {
+                    error("No se pudo leer la entrada de audio ($read)")
+                }
             }
+        } finally {
+            releaseRecord()
         }
-
-        awaitClose { releaseRecord() }
-    }.flowOn(Dispatchers.IO)
+        close()
+    }.buffer(100).flowOn(Dispatchers.IO)
 
     override fun stop() {
         recording = false

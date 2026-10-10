@@ -1,109 +1,106 @@
 package com.rtts.app.audio
 
 import android.content.Context
+import android.media.AudioFormat
 import android.media.MediaCodec
 import android.media.MediaExtractor
 import android.media.MediaFormat
 import android.net.Uri
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.channels.awaitClose
+import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.flow.Flow
-import kotlinx.coroutines.flow.callbackFlow
+import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.flowOn
-import java.nio.ByteBuffer
+import java.nio.ByteOrder
 
-private const val TARGET_SAMPLE_RATE = 16000
-private const val TIMEOUT_US = 10_000L
-
-/**
- * Decodes a user-picked audio/video file (any format the platform's MediaCodec supports:
- * mp3, mp4/aac, wav, etc.) to 16kHz mono PCM, so an operator can transcribe an existing
- * recording instead of only the bundled QA samples.
- */
+/** Decodes at the consumer's pace: imported audio must never be silently discarded. */
 class UriAudioSource(private val context: Context, private val uri: Uri) : AudioSource {
+    @Volatile private var playing = false
 
-    @Volatile
-    private var playing = false
-
-    override fun start(): Flow<AudioChunk> = callbackFlow {
+    override fun start(): Flow<AudioChunk> = flow {
         playing = true
         val extractor = MediaExtractor()
-        extractor.setDataSource(context, uri, null)
-
-        val trackIndex = (0 until extractor.trackCount).firstOrNull { i ->
-            extractor.getTrackFormat(i).getString(MediaFormat.KEY_MIME)?.startsWith("audio/") == true
-        }
-        if (trackIndex == null) {
-            close(IllegalArgumentException("No se encontró una pista de audio en el archivo seleccionado"))
-            extractor.release()
-            return@callbackFlow
-        }
-        extractor.selectTrack(trackIndex)
-        val inputFormat = extractor.getTrackFormat(trackIndex)
-        val mime = inputFormat.getString(MediaFormat.KEY_MIME)!!
-
-        val decoder = MediaCodec.createDecoderByType(mime)
-        decoder.configure(inputFormat, null, null, 0)
-        decoder.start()
-
-        var sawInputEos = false
-        var sawOutputEos = false
-        var channelCount = inputFormat.getInteger(MediaFormat.KEY_CHANNEL_COUNT)
-        var sourceSampleRate = inputFormat.getInteger(MediaFormat.KEY_SAMPLE_RATE)
-
-        val bufferInfo = MediaCodec.BufferInfo()
-        while (playing && !sawOutputEos) {
-            if (!sawInputEos) {
-                val inIndex = decoder.dequeueInputBuffer(TIMEOUT_US)
-                if (inIndex >= 0) {
-                    val inputBuffer: ByteBuffer = decoder.getInputBuffer(inIndex)!!
-                    val sampleSize = extractor.readSampleData(inputBuffer, 0)
-                    if (sampleSize < 0) {
-                        decoder.queueInputBuffer(inIndex, 0, 0, 0, MediaCodec.BUFFER_FLAG_END_OF_STREAM)
-                        sawInputEos = true
-                    } else {
-                        decoder.queueInputBuffer(inIndex, 0, sampleSize, extractor.sampleTime, 0)
-                        extractor.advance()
+        var decoder: MediaCodec? = null
+        var started = false
+        try {
+            extractor.setDataSource(context, uri, null)
+            val index = (0 until extractor.trackCount).firstOrNull {
+                extractor.getTrackFormat(it).getString(MediaFormat.KEY_MIME)?.startsWith("audio/") == true
+            } ?: error("No se encontró una pista de audio")
+            extractor.selectTrack(index)
+            val format = extractor.getTrackFormat(index)
+            val codec = MediaCodec.createDecoderByType(format.getString(MediaFormat.KEY_MIME)!!)
+            decoder = codec
+            codec.configure(format, null, null, 0)
+            codec.start()
+            started = true
+            var channels = format.getInteger(MediaFormat.KEY_CHANNEL_COUNT)
+            var rate = format.getInteger(MediaFormat.KEY_SAMPLE_RATE)
+            var encoding = AudioFormat.ENCODING_PCM_16BIT
+            var inputEnded = false
+            var outputEnded = false
+            val info = MediaCodec.BufferInfo()
+            while (playing && !outputEnded) {
+                currentCoroutineContext().ensureActive()
+                if (!inputEnded) {
+                    val inputIndex = codec.dequeueInputBuffer(10_000L)
+                    if (inputIndex >= 0) {
+                        val buffer = codec.getInputBuffer(inputIndex)!!
+                        val size = extractor.readSampleData(buffer, 0)
+                        if (size < 0) {
+                            codec.queueInputBuffer(inputIndex, 0, 0, 0, MediaCodec.BUFFER_FLAG_END_OF_STREAM)
+                            inputEnded = true
+                        } else {
+                            codec.queueInputBuffer(inputIndex, 0, size, extractor.sampleTime, 0)
+                            extractor.advance()
+                        }
                     }
+                }
+                val outputIndex = codec.dequeueOutputBuffer(info, 10_000L)
+                if (outputIndex == MediaCodec.INFO_OUTPUT_FORMAT_CHANGED) {
+                    val output = codec.outputFormat
+                    channels = output.getInteger(MediaFormat.KEY_CHANNEL_COUNT)
+                    rate = output.getInteger(MediaFormat.KEY_SAMPLE_RATE)
+                    encoding = if (output.containsKey(MediaFormat.KEY_PCM_ENCODING))
+                        output.getInteger(MediaFormat.KEY_PCM_ENCODING) else AudioFormat.ENCODING_PCM_16BIT
+                } else if (outputIndex >= 0) {
+                    var samples: FloatArray? = null
+                    try {
+                        if (info.size > 0) {
+                            val buffer = codec.getOutputBuffer(outputIndex)!!
+                            buffer.position(info.offset)
+                            buffer.limit(info.offset + info.size)
+                            buffer.order(ByteOrder.LITTLE_ENDIAN)
+                            val pcm = when (encoding) {
+                                AudioFormat.ENCODING_PCM_16BIT -> ShortArray(info.size / 2).also {
+                                    buffer.asShortBuffer().get(it)
+                                }
+                                AudioFormat.ENCODING_PCM_FLOAT -> {
+                                    val floats = FloatArray(info.size / 4)
+                                    buffer.asFloatBuffer().get(floats)
+                                    ShortArray(floats.size) { (floats[it].coerceIn(-1f, 1f) * 32767).toInt().toShort() }
+                                }
+                                else -> error("Formato PCM no compatible: $encoding")
+                            }
+                            require(channels > 0 && rate > 0)
+                            samples = AudioResampler.toMono16kFloats(pcm, pcm.size, channels, rate)
+                        }
+                    } finally {
+                        codec.releaseOutputBuffer(outputIndex, false)
+                    }
+                    // emit suspends instead of dropping data when Whisper is busy.
+                    samples?.let { emit(AudioChunk(it, 16000)) }
+                    outputEnded = info.flags and MediaCodec.BUFFER_FLAG_END_OF_STREAM != 0
                 }
             }
-
-            val outIndex = decoder.dequeueOutputBuffer(bufferInfo, TIMEOUT_US)
-            when {
-                outIndex == MediaCodec.INFO_OUTPUT_FORMAT_CHANGED -> {
-                    val newFormat = decoder.outputFormat
-                    channelCount = newFormat.getInteger(MediaFormat.KEY_CHANNEL_COUNT)
-                    sourceSampleRate = newFormat.getInteger(MediaFormat.KEY_SAMPLE_RATE)
-                }
-                outIndex >= 0 -> {
-                    if (bufferInfo.size > 0) {
-                        val outputBuffer: ByteBuffer = decoder.getOutputBuffer(outIndex)!!
-                        outputBuffer.position(bufferInfo.offset)
-                        outputBuffer.limit(bufferInfo.offset + bufferInfo.size)
-                        val shorts = ShortArray(bufferInfo.size / 2)
-                        outputBuffer.asShortBuffer().get(shorts)
-                        val floatSamples = AudioResampler.toMono16kFloats(
-                            shorts, shorts.size, channelCount.coerceAtLeast(1), sourceSampleRate
-                        )
-                        trySend(AudioChunk(floatSamples, TARGET_SAMPLE_RATE))
-                    }
-                    decoder.releaseOutputBuffer(outIndex, false)
-                    if (bufferInfo.flags and MediaCodec.BUFFER_FLAG_END_OF_STREAM != 0) {
-                        sawOutputEos = true
-                    }
-                }
+        } finally {
+            playing = false
+            try { if (started) decoder?.stop() } finally {
+                try { decoder?.release() } finally { extractor.release() }
             }
         }
-
-        decoder.stop()
-        decoder.release()
-        extractor.release()
-        playing = false
-
-        awaitClose { playing = false }
     }.flowOn(Dispatchers.IO)
 
-    override fun stop() {
-        playing = false
-    }
+    override fun stop() { playing = false }
 }

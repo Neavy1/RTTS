@@ -1,0 +1,27 @@
+{
+  "version": 2,
+  "language": "en",
+  "source": "https://www.faasafety.gov/files/events/NM/NM09/2026/NM09141454/Common_Pilot-ATC_Radio_Phrases.pdf",
+  "scope": "Partial FAA vocabulary for annotation and evaluation, not automatic transcript replacement or a complete operational glossary.",
+  "phrases": [
+    "abeam", "acknowledge", "affirmative", "back taxi", "blocked", "stepped on",
+    "cleared for the option", "clearance", "closed traffic", "direct", "expedite",
+    "flight following", "traffic advisories", "go around", "how do you hear me",
+    "ident", "land and hold short", "LAHSO", "line up and wait", "make short approach",
+    "monitor", "negative", "negative contact", "numerous targets in vicinity",
+    "progressive taxi", "roger", "runway heading", "say again", "stop and go",
+    "squawk VFR", "traffic in sight", "traffic no factor", "traffic no longer observed",
+    "unable", "wilco", "student pilot",
+    "Miami Ground", "ready to taxi", "runway zero eight right", "taxi via",
+    "Romeo Zulu", "hold short runway one two", "confirm hold short",
+    "Yellow one zero zero one", "Tug six one two three", "give way",
+    "two Americans", "Whiskey", "continue via November"
+  ],
+  "annotation_categories": ["callsign", "frequency", "runway", "altitude", "heading", "squawk", "negation", "instruction"],
+  "notes": [
+    "Annotate the words actually heard, not their definition or an expected clearance.",
+    "Spanish and local airport vocabulary must be curated separately; this list is not an official Spanish translation.",
+    "Keep spoken numbers in the reference; do not silently equate different numbers or expand codes.",
+    "The videoejemplo phrases are error-driven vocabulary from the 2026-09-22 benchmark; confirm each reference by listening before training."
+  ]
+}

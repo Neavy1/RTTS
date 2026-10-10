@@ -34,6 +34,9 @@ kotlin {
     }
 
     sourceSets {
+        androidUnitTest.dependencies {
+            implementation(kotlin("test-junit"))
+        }
         commonMain.dependencies {
             implementation(compose.runtime)
             implementation(compose.foundation)

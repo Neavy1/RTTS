@@ -21,3 +21,7 @@ Thumbs.db
 
 # Claude Code local runtime state
 .claude/
+
+# Local ATC datasets, checkpoints and Python caches
+training/atc/local/
+**/__pycache__/
