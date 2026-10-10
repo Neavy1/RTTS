@@ -2,6 +2,8 @@
 
 Herramientas locales para convertir los WAV incluidos en referencias revisables, generar borradores, evaluar transcripciones y preparar un primer entrenamiento experimental. La preparación/evaluación usa solo Python estándar; inferencia y entrenamiento tienen dependencias separadas. Las salidas de la app no cambian automáticamente.
 
+Las correcciones recibidas en la página pública se analizan en [WEB_REVIEW.md](WEB_REVIEW.md). Los textos parciales o con marcas de incertidumbre no deben entrar como referencias `verified` aunque el formulario antiguo los haya etiquetado así.
+
 ## Segmentar por transmisiones
 
 Para audio de radio continuo, crea clips siguiendo las regiones de voz en lugar de ventanas rígidas. Las pausas de hasta 1.25 s se conservan dentro de una misma transmisión y se añaden 200 ms de contexto:

@@ -101,6 +101,23 @@ class EvaluationTests(unittest.TestCase):
         selected = select_training(rows, 'en')
         self.assertEqual([r['id'] for values in selected.values() for r in values], ['train', 'dev'])
 
+    def test_verified_reference_rejects_uncertain_words(self):
+        import wave, hashlib
+        with tempfile.TemporaryDirectory() as folder:
+            root = Path(folder)
+            audio = root / 'clip.wav'
+            with wave.open(str(audio), 'wb') as wav:
+                wav.setparams((1, 2, 16000, 0, 'NONE', 'not compressed'))
+                wav.writeframes(b'\x00\x00' * 160)
+            row = self.row('hold short [inaudible] runway one', source_group='session',
+                           source_sha256='session-hash', audio='clip.wav',
+                           audio_sha256=hashlib.sha256(audio.read_bytes()).hexdigest(),
+                           duration_s=.01, reviewer='human', language='en')
+            with self.assertRaisesRegex(ValueError, 'incertidumbre'):
+                dataset.validate([row], root)
+            row['status'] = 'pending'
+            self.assertEqual(dataset.validate([row], root)[0]['status'], 'pending')
+
     def test_source_leakage_rejected(self):
         # Collision must be rejected before accessing the second row's audio.
         row = self.row('roger', source_group='same', source_sha256='same', split='test')

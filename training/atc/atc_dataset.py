@@ -44,6 +44,11 @@ def contains(sequence, phrase):
     return bool(phrase) and any(sequence[i:i + len(phrase)] == phrase for i in range(len(sequence) - len(phrase) + 1))
 
 
+def has_uncertainty_marker(text):
+    """Reviewer annotations are not literal words for supervised labels or WER."""
+    return bool(re.search(r'\[[^\]]*\]|\([^)]*\)|\.{3,}|…|\b(?:inaudible|ininteligible)\b', text, re.IGNORECASE))
+
+
 def is_digital_silence(path):
     """A narrow proof: every PCM16 sample is exactly zero, not merely quiet."""
     with wave.open(str(path), 'rb') as wav:
@@ -96,6 +101,8 @@ def validate(rows, root):
                 raise ValueError("Falta identificar al revisor")
             if row["status"] == "verified" and (not tokens(row["text"]) or row["language"] not in ("es", "en", "mixed")):
                 raise ValueError("Una referencia verificada requiere texto e idioma")
+            if row["status"] == "verified" and has_uncertainty_marker(row["text"]):
+                raise ValueError(f"{row['id']}: una referencia verificada no puede contener marcas de incertidumbre")
             if row["status"] == "no_speech" and row["text"].strip():
                 raise ValueError("no_speech debe tener texto vacío")
         for item in row.get("critical", []):
