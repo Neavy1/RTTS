@@ -1,7 +1,9 @@
 package com.rtts.app.feature.transcript
 
+import android.Manifest
 import android.content.Context
 import android.content.Intent
+import android.content.pm.PackageManager
 import android.media.MediaPlayer
 import android.net.Uri
 import androidx.activity.compose.rememberLauncherForActivityResult
@@ -37,6 +39,7 @@ import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Scaffold
@@ -62,6 +65,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import androidx.core.content.ContextCompat
 import com.rtts.app.RttsApplication
 import com.rtts.app.audio.FileAudioSource
 import com.rtts.app.data.TranscriptSegmentEntity
@@ -75,6 +79,10 @@ import kotlinx.coroutines.delay
 fun LiveTranscriptScreen() {
     val context = LocalContext.current
     val isRunning by TranscriptionForegroundService.isRunning.collectAsState()
+    val isStopping by TranscriptionForegroundService.isStopping.collectAsState()
+    val isLive by TranscriptionForegroundService.isLive.collectAsState()
+    val captureStats by TranscriptionForegroundService.captureStats.collectAsState()
+    val captureError by TranscriptionForegroundService.captureError.collectAsState()
     val sessionId by TranscriptionForegroundService.currentSessionId.collectAsState()
     val container = (context.applicationContext as RttsApplication).container
 
@@ -90,12 +98,22 @@ fun LiveTranscriptScreen() {
     val backgroundPlayer = remember { BackgroundAudioPlayer(context) }
     DisposableEffect(Unit) { onDispose { backgroundPlayer.release() } }
     var pendingPlayback by remember { mutableStateOf<PlaybackSource?>(null) }
+    var permissionDenied by remember { mutableStateOf(false) }
+    val startLive = {
+        pendingPlayback = null
+        backgroundPlayer.stop()
+        permissionDenied = false
+        startTranscriptionOfRadio(context)
+    }
+    val audioPermission = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
+        if (granted) startLive() else permissionDenied = true
+    }
     LaunchedEffect(isRunning) {
         if (isRunning) pendingPlayback?.let { backgroundPlayer.play(it) } else backgroundPlayer.stop()
     }
 
     val filePicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
-        if (uri != null) {
+        if (uri != null && !TranscriptionForegroundService.isRunning.value) {
             pendingPlayback = PlaybackSource.PickedFile(uri)
             startTranscriptionOfFile(context, uri)
         }
@@ -133,13 +151,42 @@ fun LiveTranscriptScreen() {
         Column(modifier = Modifier.fillMaxSize().padding(padding)) {
             ControlBar(
                 isRunning = isRunning,
-                onStart = {
+                isStopping = isStopping,
+                onListen = {
+                    if (ContextCompat.checkSelfPermission(context, Manifest.permission.RECORD_AUDIO)
+                        == PackageManager.PERMISSION_GRANTED
+                    ) startLive() else audioPermission.launch(Manifest.permission.RECORD_AUDIO)
+                },
+                onSamples = {
                     pendingPlayback = PlaybackSource.Samples
                     startTranscriptionOfSamples(context)
                 },
-                onStop = { stopTranscription(context) },
+                onStop = {
+                    backgroundPlayer.stop()
+                    stopTranscription(context)
+                },
                 onPickFile = { filePicker.launch(arrayOf("audio/*", "video/mp4", "video/*")) },
             )
+            Column(Modifier.fillMaxWidth().padding(horizontal = 16.dp)) {
+                if (permissionDenied) {
+                    Text("Se necesita permiso de micrófono para escuchar el audio de la radio.",
+                        style = MaterialTheme.typography.bodySmall)
+                }
+                captureError?.let { Text(it, color = MaterialTheme.colorScheme.error,
+                    style = MaterialTheme.typography.bodySmall) }
+                if (isRunning && isLive && !isStopping) {
+                    Text("Nivel de entrada", style = MaterialTheme.typography.labelSmall)
+                    LinearProgressIndicator(progress = captureStats.inputLevel,
+                        modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp))
+                }
+                if (isStopping) Text("Finalizando transcripción pendiente…", style = MaterialTheme.typography.bodySmall)
+                if (captureStats.queuedSeconds > 0.0 || captureStats.droppedChunks > 0) {
+                    Text("Audio en cola: %.1f s · Trozos descartados: %d".format(
+                        captureStats.queuedSeconds, captureStats.droppedChunks),
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
+            }
 
             if (segments.isEmpty()) {
                 EmptyState(isRunning)
@@ -208,33 +255,43 @@ private fun LiveCaptionBar(latest: TranscriptSegmentEntity) {
 @Composable
 private fun ControlBar(
     isRunning: Boolean,
-    onStart: () -> Unit,
+    isStopping: Boolean,
+    onListen: () -> Unit,
+    onSamples: () -> Unit,
     onStop: () -> Unit,
     onPickFile: () -> Unit,
 ) {
     Surface(color = MaterialTheme.colorScheme.surfaceVariant) {
-        Row(
+        Column(
             modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 12.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(12.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp),
         ) {
-            if (isRunning) {
-                Button(
-                    onClick = onStop,
-                    colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error),
-                ) {
-                    Icon(Icons.Filled.Stop, contentDescription = null, modifier = Modifier.size(18.dp))
-                    Spacer(Modifier.width(6.dp))
-                    Text("Detener")
+            Row(verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                if (isRunning) {
+                    Button(
+                        onClick = onStop,
+                        enabled = !isStopping,
+                        colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error),
+                    ) {
+                        Icon(Icons.Filled.Stop, contentDescription = null, modifier = Modifier.size(18.dp))
+                        Spacer(Modifier.width(6.dp))
+                        Text("Detener")
+                    }
+                    RecordingIndicator()
+                } else {
+                    Button(onClick = onListen) {
+                        Icon(Icons.Filled.Mic, contentDescription = null, modifier = Modifier.size(18.dp))
+                        Spacer(Modifier.width(6.dp))
+                        Text("Escuchar radio")
+                    }
                 }
-                RecordingIndicator()
-            } else {
-                Button(onClick = onStart) {
-                    Icon(Icons.Filled.Mic, contentDescription = null, modifier = Modifier.size(18.dp))
-                    Spacer(Modifier.width(6.dp))
+            }
+            Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                OutlinedButton(onClick = onSamples, enabled = !isRunning) {
                     Text("Muestras de prueba")
                 }
-                OutlinedButton(onClick = onPickFile) {
+                OutlinedButton(onClick = onPickFile, enabled = !isRunning) {
                     Icon(Icons.Filled.FolderOpen, contentDescription = null, modifier = Modifier.size(18.dp))
                     Spacer(Modifier.width(6.dp))
                     Text("Elegir archivo…")
@@ -517,6 +574,13 @@ private class SegmentAudioPlayer {
 private fun startTranscriptionOfSamples(context: Context) {
     val intent = Intent(context, TranscriptionForegroundService::class.java).apply {
         putExtra(TranscriptionForegroundService.EXTRA_USE_FILE_SOURCE, true)
+    }
+    context.startForegroundService(intent)
+}
+
+private fun startTranscriptionOfRadio(context: Context) {
+    val intent = Intent(context, TranscriptionForegroundService::class.java).apply {
+        putExtra(TranscriptionForegroundService.EXTRA_USE_FILE_SOURCE, false)
     }
     context.startForegroundService(intent)
 }

@@ -9,9 +9,10 @@ import android.media.AudioManager
 import android.media.AudioRecord
 import android.media.MediaRecorder
 import androidx.core.content.ContextCompat
-import kotlinx.coroutines.channels.awaitClose
+import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.flow.Flow
-import kotlinx.coroutines.flow.callbackFlow
+import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.Dispatchers
 
@@ -28,37 +29,47 @@ class AnalogLineInAudioSource(private val context: Context) : AudioSource {
 
     @Volatile
     private var recording = false
+    @Volatile
     private var audioRecord: AudioRecord? = null
 
-    override fun start(): Flow<AudioChunk> = callbackFlow {
+    override fun start(): Flow<AudioChunk> = flow {
         if (ContextCompat.checkSelfPermission(context, Manifest.permission.RECORD_AUDIO)
             != PackageManager.PERMISSION_GRANTED
         ) {
-            close(SecurityException("RECORD_AUDIO permission not granted"))
-            return@callbackFlow
+            throw SecurityException("RECORD_AUDIO permission not granted")
         }
 
         val (record, sampleRate) = createAudioRecord()
         audioRecord = record
         preferExternalInputDevice(record)
 
-        record.startRecording()
-        recording = true
-
-        val shortBuffer = ShortArray(CHUNK_SAMPLES * sampleRate / TARGET_SAMPLE_RATE)
-        while (recording) {
-            val read = record.read(shortBuffer, 0, shortBuffer.size)
-            if (read > 0) {
-                val floatSamples = AudioResampler.toMono16kFloats(shortBuffer, read, 1, sampleRate)
-                trySend(AudioChunk(floatSamples, TARGET_SAMPLE_RATE))
+        try {
+            record.startRecording()
+            recording = true
+            val shortBuffer = ShortArray(CHUNK_SAMPLES * sampleRate / TARGET_SAMPLE_RATE)
+            while (recording) {
+                currentCoroutineContext().ensureActive()
+                val read = record.read(shortBuffer, 0, shortBuffer.size)
+                if (read > 0) {
+                    val floatSamples = AudioResampler.toMono16kFloats(shortBuffer, read, 1, sampleRate)
+                    emit(AudioChunk(floatSamples, TARGET_SAMPLE_RATE))
+                } else if (read < 0 && recording) {
+                    throw IllegalStateException("Error de captura de audio: $read")
+                }
             }
+        } finally {
+            releaseRecord()
         }
-
-        awaitClose { releaseRecord() }
     }.flowOn(Dispatchers.IO)
 
     override fun stop() {
         recording = false
+        // Unblock a pending read; only the producer releases the recorder in finally.
+        try {
+            audioRecord?.stop()
+        } catch (_: IllegalStateException) {
+            // Already stopped or not started yet.
+        }
     }
 
     private fun releaseRecord() {
