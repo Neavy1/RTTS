@@ -8,73 +8,15 @@ import android.media.MediaPlayer
 import android.net.Uri
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
-import androidx.compose.animation.AnimatedVisibility
-import androidx.compose.foundation.background
-import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.PaddingValues
-import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
-import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.FolderOpen
-import androidx.compose.material.icons.filled.Mic
-import androidx.compose.material.icons.filled.Pause
-import androidx.compose.material.icons.filled.PlayArrow
-import androidx.compose.material.icons.filled.Stop
-import androidx.compose.material3.Button
-import androidx.compose.material3.ButtonDefaults
-import androidx.compose.material3.Card
-import androidx.compose.material3.CardDefaults
-import androidx.compose.material3.CircularProgressIndicator
-import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
-import androidx.compose.material3.LinearProgressIndicator
-import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedButton
-import androidx.compose.material3.Scaffold
-import androidx.compose.material3.Surface
-import androidx.compose.material3.Text
-import androidx.compose.material3.TopAppBar
-import androidx.compose.material3.TopAppBarDefaults
-import androidx.compose.foundation.border
-import androidx.compose.runtime.Composable
-import androidx.compose.runtime.DisposableEffect
-import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.collectAsState
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateListOf
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.produceState
-import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
-import androidx.compose.ui.Alignment
-import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Color
+import androidx.compose.runtime.*
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.text.TextStyle
-import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.unit.dp
 import androidx.core.content.ContextCompat
 import com.rtts.app.RttsApplication
 import com.rtts.app.audio.FileAudioSource
 import com.rtts.app.data.TranscriptSegmentEntity
 import com.rtts.app.pipeline.TranscriptionForegroundService
-import com.rtts.app.ui.theme.RttsAmber
-import com.rtts.app.ui.theme.colorForSpeaker
-import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 
-@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun LiveTranscriptScreen() {
     val context = LocalContext.current
@@ -87,6 +29,7 @@ fun LiveTranscriptScreen() {
     val container = (context.applicationContext as RttsApplication).container
 
     val segments by produceState(initialValue = emptyList<TranscriptSegmentEntity>(), sessionId) {
+        value = emptyList()
         val id = sessionId
         if (id == null) {
             value = emptyList()
@@ -122,360 +65,34 @@ fun LiveTranscriptScreen() {
     val player = remember { SegmentAudioPlayer() }
     DisposableEffect(Unit) { onDispose { player.release() } }
     val playingSegmentId by player.playingSegmentId
-    val seenSegmentIds = remember { mutableStateListOf<Long>() }
-
-    Scaffold(
-        topBar = {
-            TopAppBar(
-                title = {
-                    Column {
-                        Text("RTTS", fontWeight = FontWeight.Bold)
-                        Text(
-                            "Transcripción de comunicación aeronáutica",
-                            style = MaterialTheme.typography.labelSmall,
-                        )
-                    }
-                },
-                colors = TopAppBarDefaults.topAppBarColors(
-                    containerColor = MaterialTheme.colorScheme.primary,
-                    titleContentColor = MaterialTheme.colorScheme.onPrimary,
-                ),
-            )
+    val scope = rememberCoroutineScope()
+    val sessionStart by produceState<Pair<Long, Long>?>(null, sessionId) {
+        value = null
+        value = sessionId?.let { id ->
+            container.database.sessionDao().getById(id)?.let { id to it.startedAtEpochMs }
+        }
+    }
+    CabinScreen(
+        segments = segments.filter { it.sessionId == sessionId },
+        sessionStartEpochMs = sessionStart?.takeIf { it.first == sessionId }?.second,
+        isRunning = isRunning, isStopping = isStopping, isLive = isLive,
+        captureStats = captureStats, captureError = captureError,
+        permissionDenied = permissionDenied, playingSegmentId = playingSegmentId,
+        onListen = {
+            if (ContextCompat.checkSelfPermission(context, Manifest.permission.RECORD_AUDIO)
+                == PackageManager.PERMISSION_GRANTED
+            ) startLive() else audioPermission.launch(Manifest.permission.RECORD_AUDIO)
         },
-        bottomBar = {
-            AnimatedVisibility(visible = isRunning && segments.isNotEmpty()) {
-                LiveCaptionBar(segments.last())
-            }
+        onStop = { backgroundPlayer.stop(); stopTranscription(context) },
+        onSamples = {
+            pendingPlayback = PlaybackSource.Samples
+            startTranscriptionOfSamples(context)
         },
-    ) { padding ->
-        Column(modifier = Modifier.fillMaxSize().padding(padding)) {
-            ControlBar(
-                isRunning = isRunning,
-                isStopping = isStopping,
-                onListen = {
-                    if (ContextCompat.checkSelfPermission(context, Manifest.permission.RECORD_AUDIO)
-                        == PackageManager.PERMISSION_GRANTED
-                    ) startLive() else audioPermission.launch(Manifest.permission.RECORD_AUDIO)
-                },
-                onSamples = {
-                    pendingPlayback = PlaybackSource.Samples
-                    startTranscriptionOfSamples(context)
-                },
-                onStop = {
-                    backgroundPlayer.stop()
-                    stopTranscription(context)
-                },
-                onPickFile = { filePicker.launch(arrayOf("audio/*", "video/mp4", "video/*")) },
-            )
-            Column(Modifier.fillMaxWidth().padding(horizontal = 16.dp)) {
-                if (permissionDenied) {
-                    Text("Se necesita permiso de micrófono para escuchar el audio de la radio.",
-                        style = MaterialTheme.typography.bodySmall)
-                }
-                captureError?.let { Text(it, color = MaterialTheme.colorScheme.error,
-                    style = MaterialTheme.typography.bodySmall) }
-                if (isRunning && isLive && !isStopping) {
-                    Text("Nivel de entrada", style = MaterialTheme.typography.labelSmall)
-                    LinearProgressIndicator(progress = captureStats.inputLevel,
-                        modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp))
-                }
-                if (isStopping) Text("Finalizando transcripción pendiente…", style = MaterialTheme.typography.bodySmall)
-                if (captureStats.queuedSeconds > 0.0 || captureStats.droppedChunks > 0) {
-                    Text("Audio en cola: %.1f s · Trozos descartados: %d".format(
-                        captureStats.queuedSeconds, captureStats.droppedChunks),
-                        style = MaterialTheme.typography.labelSmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant)
-                }
-            }
-
-            if (segments.isEmpty()) {
-                EmptyState(isRunning)
-            } else {
-                LazyColumn(
-                    contentPadding = PaddingValues(16.dp),
-                    verticalArrangement = Arrangement.spacedBy(10.dp),
-                ) {
-                    items(segments, key = { it.id }) { segment ->
-                        val isNewArrival = remember(segment.id) { segment.id !in seenSegmentIds }
-                        LaunchedEffect(segment.id) { seenSegmentIds.add(segment.id) }
-                        TranscriptCard(
-                            segment = segment,
-                            isPlaying = segment.id == playingSegmentId,
-                            animateText = isNewArrival,
-                            onPlayToggle = {
-                                backgroundPlayer.stop()
-                                player.toggle(segment)
-                            },
-                        )
-                    }
-                }
-            }
-        }
-    }
-}
-
-/**
- * Pinned "now playing" caption for the most recent transmission, styled after aerodrome
- * signage (black-on-yellow) for maximum legibility at a glance -- inspired by how live-ATC
- * apps (e.g. ATC.app) surface the current transmission separately from the scrollable history.
- */
-@Composable
-private fun LiveCaptionBar(latest: TranscriptSegmentEntity) {
-    Surface(color = RttsAmber, contentColor = Color.Black) {
-        Row(
-            modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 12.dp),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            Surface(color = Color.Black, shape = RoundedCornerShape(6.dp)) {
-                Column(modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp)) {
-                    Text(
-                        "EN VIVO",
-                        color = RttsAmber,
-                        style = MaterialTheme.typography.labelSmall,
-                        fontWeight = FontWeight.Bold,
-                    )
-                    Text(
-                        "%02d:%02d".format((latest.startMs / 1000) / 60, (latest.startMs / 1000) % 60),
-                        color = Color.White,
-                        style = MaterialTheme.typography.labelSmall,
-                    )
-                }
-            }
-            Spacer(Modifier.width(12.dp))
-            TypewriterText(
-                text = latest.text,
-                style = MaterialTheme.typography.titleMedium,
-                fontWeight = FontWeight.Bold,
-                maxLines = 2,
-            )
-        }
-    }
-}
-
-@Composable
-private fun ControlBar(
-    isRunning: Boolean,
-    isStopping: Boolean,
-    onListen: () -> Unit,
-    onSamples: () -> Unit,
-    onStop: () -> Unit,
-    onPickFile: () -> Unit,
-) {
-    Surface(color = MaterialTheme.colorScheme.surfaceVariant) {
-        Column(
-            modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 12.dp),
-            verticalArrangement = Arrangement.spacedBy(8.dp),
-        ) {
-            Row(verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                if (isRunning) {
-                    Button(
-                        onClick = onStop,
-                        enabled = !isStopping,
-                        colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error),
-                    ) {
-                        Icon(Icons.Filled.Stop, contentDescription = null, modifier = Modifier.size(18.dp))
-                        Spacer(Modifier.width(6.dp))
-                        Text("Detener")
-                    }
-                    RecordingIndicator()
-                } else {
-                    Button(onClick = onListen) {
-                        Icon(Icons.Filled.Mic, contentDescription = null, modifier = Modifier.size(18.dp))
-                        Spacer(Modifier.width(6.dp))
-                        Text("Escuchar radio")
-                    }
-                }
-            }
-            Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                OutlinedButton(onClick = onSamples, enabled = !isRunning) {
-                    Text("Muestras de prueba")
-                }
-                OutlinedButton(onClick = onPickFile, enabled = !isRunning) {
-                    Icon(Icons.Filled.FolderOpen, contentDescription = null, modifier = Modifier.size(18.dp))
-                    Spacer(Modifier.width(6.dp))
-                    Text("Elegir archivo…")
-                }
-            }
-        }
-    }
-}
-
-@Composable
-private fun RecordingIndicator() {
-    Row(verticalAlignment = Alignment.CenterVertically) {
-        Box(
-            modifier = Modifier
-                .size(10.dp)
-                .background(MaterialTheme.colorScheme.error, CircleShape),
-        )
-        Spacer(Modifier.width(6.dp))
-        Text("Procesando…", style = MaterialTheme.typography.labelMedium)
-        Spacer(Modifier.width(8.dp))
-        CircularProgressIndicator(modifier = Modifier.size(14.dp), strokeWidth = 2.dp)
-    }
-}
-
-@Composable
-private fun EmptyState(isRunning: Boolean) {
-    Column(
-        modifier = Modifier.fillMaxSize().padding(32.dp),
-        horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.Center,
-    ) {
-        Icon(
-            Icons.Filled.Mic,
-            contentDescription = null,
-            modifier = Modifier.size(48.dp),
-            tint = MaterialTheme.colorScheme.outline,
-        )
-        Spacer(Modifier.width(12.dp))
-        Text(
-            if (isRunning) "Escuchando… el texto aparecerá aquí a medida que se detecten transmisiones."
-            else "Inicia una captura para ver la transcripción en vivo.",
-            style = MaterialTheme.typography.bodyMedium,
-            color = MaterialTheme.colorScheme.outline,
-        )
-    }
-}
-
-@Composable
-private fun TranscriptCard(
-    segment: TranscriptSegmentEntity,
-    isPlaying: Boolean,
-    animateText: Boolean,
-    onPlayToggle: () -> Unit,
-) {
-    val speakerColor = colorForSpeaker(segment.speakerLabel)
-    Card(
-        modifier = Modifier
-            .fillMaxWidth()
-            .let {
-                if (isPlaying) it.border(2.dp, RttsAmber, MaterialTheme.shapes.medium) else it
-            },
-        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-        elevation = CardDefaults.cardElevation(defaultElevation = 1.dp),
-    ) {
-        Row {
-            Box(
-                modifier = Modifier
-                    .width(4.dp)
-                    .fillMaxWidth()
-                    .background(speakerColor),
-            )
-            Column(modifier = Modifier.padding(12.dp).fillMaxWidth()) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    SpeakerBadge(label = segment.speakerLabel, color = speakerColor)
-                    Spacer(Modifier.width(8.dp))
-                    Text(
-                        "%02d:%02d".format((segment.startMs / 1000) / 60, (segment.startMs / 1000) % 60),
-                        style = MaterialTheme.typography.labelSmall,
-                        color = MaterialTheme.colorScheme.outline,
-                    )
-                    Spacer(Modifier.width(8.dp))
-                    LanguageChip(segment.lang)
-                    if (segment.audioFilePath != null) {
-                        Spacer(Modifier.width(4.dp))
-                        IconButton(
-                            onClick = onPlayToggle,
-                            modifier = Modifier.size(28.dp),
-                        ) {
-                            Icon(
-                                if (isPlaying) Icons.Filled.Pause else Icons.Filled.PlayArrow,
-                                contentDescription = if (isPlaying) "Pausar" else "Reproducir",
-                                tint = MaterialTheme.colorScheme.primary,
-                            )
-                        }
-                    }
-                }
-                Spacer(Modifier.width(4.dp))
-                TypewriterText(
-                    text = segment.text,
-                    style = MaterialTheme.typography.bodyLarge,
-                    modifier = Modifier.padding(top = 6.dp),
-                    animate = animateText,
-                )
-            }
-        }
-    }
-}
-
-@Composable
-private fun SpeakerBadge(label: String, color: Color) {
-    Row(verticalAlignment = Alignment.CenterVertically) {
-        Box(
-            modifier = Modifier.size(20.dp).background(color, CircleShape),
-            contentAlignment = Alignment.Center,
-        ) {
-            Text(
-                label.take(1).uppercase(),
-                color = Color.White,
-                style = MaterialTheme.typography.labelSmall,
-                fontWeight = FontWeight.Bold,
-            )
-        }
-        Spacer(Modifier.width(6.dp))
-        Text(label, style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Medium)
-    }
-}
-
-@Composable
-private fun LanguageChip(lang: String) {
-    val label = when (lang) {
-        "es" -> "ES"
-        "en" -> "EN"
-        "" -> "?"
-        else -> lang.uppercase()
-    }
-    Surface(
-        color = MaterialTheme.colorScheme.secondary.copy(alpha = 0.18f),
-        shape = RoundedCornerShape(6.dp),
-    ) {
-        Text(
-            label,
-            modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp),
-            style = MaterialTheme.typography.labelSmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-        )
-    }
-}
-
-/**
- * Reveals text word by word instead of all at once, so a freshly-arrived transcript reads like
- * it's being typed into a chat rather than snapping into place. [animate] is false for segments
- * the screen has already shown once (e.g. after a recomposition/scroll), so re-renders don't
- * replay the animation.
- */
-@Composable
-private fun TypewriterText(
-    text: String,
-    modifier: Modifier = Modifier,
-    style: TextStyle = MaterialTheme.typography.bodyLarge,
-    fontWeight: FontWeight? = null,
-    maxLines: Int = Int.MAX_VALUE,
-    animate: Boolean = true,
-) {
-    var visibleChars by remember(text) { mutableStateOf(if (animate) 0 else text.length) }
-    LaunchedEffect(text, animate) {
-        if (!animate) {
-            visibleChars = text.length
-            return@LaunchedEffect
-        }
-        visibleChars = 0
-        val builder = StringBuilder()
-        for (word in text.split(" ")) {
-            if (builder.isNotEmpty()) builder.append(' ')
-            builder.append(word)
-            visibleChars = builder.length
-            delay(55L)
-        }
-    }
-    Text(
-        text = text.take(visibleChars),
-        modifier = modifier,
-        style = style,
-        fontWeight = fontWeight,
-        maxLines = maxLines,
+        onPickFile = { filePicker.launch(arrayOf("audio/*", "video/mp4", "video/*")) },
+        onPlay = { backgroundPlayer.stop(); player.toggle(it) },
+        onBookmark = { segment, marked ->
+            scope.launch { container.database.transcriptSegmentDao().setBookmarked(segment.id, marked) }
+        },
     )
 }
 

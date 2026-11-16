@@ -35,6 +35,9 @@ interface SessionDao {
 
 @Dao
 interface TranscriptSegmentDao {
+    @Query("UPDATE transcript_segments SET bookmarked = :bookmarked WHERE id = :id")
+    suspend fun setBookmarked(id: Long, bookmarked: Boolean)
+
     @Insert
     suspend fun insert(segment: TranscriptSegmentEntity): Long
 

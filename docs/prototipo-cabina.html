@@ -1,0 +1,265 @@
+<title>RTTS Cabina</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;600;700&family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500;600&display=swap">
+<style>
+/* Concepto: un instrumento de cabina, no una app de chat. Tres zonas fijas: lo que se oye (izquierda), lo que es para mí (tablero) y quién está cerca (alcance).
+   Colores con la convención de aviónica: ámbar = atención / para mí, cian = otro tráfico, magenta = seleccionado, verde = sistema activo. */
+:root {
+  --bg:#0b1420; --panel:#111d2c; --panel2:#17263a; --line:#24374f; --line2:#35506f;
+  --fg:#eef3f8; --fg2:#b4c3d4; --mute:#8496ab;
+  --amber:#ffb629; --amber-soft:rgba(255,182,41,.14); --cyan:#5fd4f0; --cyan-soft:rgba(95,212,240,.13);
+  --magenta:#ff6fd0; --green:#4ade80; --green-soft:rgba(74,222,128,.14); --red:#ff7a70;
+  --on-amber:#1c1300;
+  --display:"Barlow Condensed","Arial Narrow",system-ui,sans-serif; --body:"IBM Plex Sans","Segoe UI",system-ui,sans-serif; --mono:"IBM Plex Mono",Consolas,monospace;
+  --esc:1;
+  color-scheme:dark;
+}
+@media (prefers-color-scheme: light) { :root:not([data-theme="dark"]) {
+  --bg:#eef2f6; --panel:#ffffff; --panel2:#e6ecf3; --line:#cfd9e4; --line2:#a9b9cb;
+  --fg:#0c1a2a; --fg2:#3a4d63; --mute:#5a6c82;
+  --amber:#9a5b00; --amber-soft:rgba(190,120,0,.14); --cyan:#046a8a; --cyan-soft:rgba(4,106,138,.10);
+  --magenta:#a8177d; --green:#0f7a3c; --green-soft:rgba(15,122,60,.12); --red:#b3261e; --on-amber:#ffffff;
+  color-scheme:light; } }
+:root[data-theme="light"] {
+  --bg:#eef2f6; --panel:#ffffff; --panel2:#e6ecf3; --line:#cfd9e4; --line2:#a9b9cb;
+  --fg:#0c1a2a; --fg2:#3a4d63; --mute:#5a6c82;
+  --amber:#9a5b00; --amber-soft:rgba(190,120,0,.14); --cyan:#046a8a; --cyan-soft:rgba(4,106,138,.10);
+  --magenta:#a8177d; --green:#0f7a3c; --green-soft:rgba(15,122,60,.12); --red:#b3261e; --on-amber:#ffffff;
+  color-scheme:light; }
+
+* { box-sizing:border-box; }
+html, body { height:100%; }
+body { background:var(--bg); color:var(--fg); font:15px/1.5 var(--body); -webkit-font-smoothing:antialiased;
+  padding-left:max(16px, env(safe-area-inset-left, 0px)); padding-right:max(16px, env(safe-area-inset-right, 0px)); padding-block:14px; }
+button { font:inherit; color:inherit; cursor:pointer; }
+:focus-visible { outline:2px solid var(--magenta); outline-offset:2px; border-radius:6px; }
+.num { font-family:var(--mono); font-variant-numeric:tabular-nums; }
+.rot { font:600 11.5px/1 var(--body); letter-spacing:.11em; text-transform:uppercase; color:var(--mute); }
+
+.app { display:grid; gap:12px; grid-template-columns:minmax(0,1.5fr) minmax(0,1fr); grid-template-rows:auto minmax(0,1fr) auto; height:100%; max-width:1500px; margin:0 auto; }
+.franja, .mando { grid-column:1 / -1; }
+
+/* franja de estado */
+.franja { display:flex; align-items:center; gap:10px 18px; flex-wrap:wrap; padding:10px 16px; background:var(--panel); border:1px solid var(--line); border-radius:14px; }
+.marca { font:700 26px/1 var(--display); letter-spacing:.04em; }
+.marca small { font:500 12px/1 var(--body); color:var(--mute); letter-spacing:0; margin-left:8px; }
+.estado { display:inline-flex; align-items:center; gap:9px; padding:7px 12px; border-radius:99px; background:var(--green-soft); color:var(--green); font-weight:600; font-size:13.5px; }
+.estado.pausa { background:var(--panel2); color:var(--fg2); }
+.estado i { width:9px; height:9px; border-radius:50%; background:currentColor; }
+.estado:not(.pausa) i { animation:late 1.4s ease-in-out infinite; }
+@keyframes late { 50% { opacity:.3; } }
+.nivel { display:flex; align-items:flex-end; gap:2px; height:22px; } .nivel b { width:4px; background:var(--green); border-radius:1px; height:20%; transition:height .12s; }
+.dato { display:grid; gap:3px; } .dato b { font:500 17px/1 var(--mono); }
+.modo { margin-left:auto; display:inline-flex; background:var(--panel2); border:1px solid var(--line); border-radius:10px; padding:3px; }
+.modo button { border:0; background:none; padding:8px 13px; border-radius:8px; font-weight:600; font-size:13px; color:var(--fg2); min-height:38px; }
+.modo button[aria-pressed="true"] { background:var(--cyan-soft); color:var(--cyan); box-shadow:inset 0 0 0 1px var(--cyan); }
+
+/* escucha */
+.escucha { display:flex; flex-direction:column; min-height:0; background:var(--panel); border:1px solid var(--line); border-radius:14px; overflow:hidden; }
+.cab { display:flex; align-items:center; justify-content:space-between; gap:10px; padding:12px 16px; border-bottom:1px solid var(--line); }
+.cab h2 { margin:0; font:600 22px/1 var(--display); letter-spacing:.03em; text-wrap:balance; }
+.filtro { display:flex; gap:6px; } .filtro button { border:1px solid var(--line2); background:none; border-radius:99px; padding:6px 12px; font-size:12.5px; font-weight:600; color:var(--fg2); min-height:34px; }
+.filtro button[aria-pressed="true"] { background:var(--amber-soft); border-color:var(--amber); color:var(--amber); }
+.rollo { flex:1; overflow:auto; padding:6px 0; scroll-behavior:smooth; }
+.tx { display:grid; grid-template-columns:74px minmax(0,1fr) auto; gap:4px 14px; padding:14px 16px; border-bottom:1px solid var(--line); border-left:4px solid transparent; }
+.tx.mia { background:var(--amber-soft); border-left-color:var(--amber); }
+.tx.nueva { animation:entra .35s ease-out; }
+@keyframes entra { from { opacity:.2; transform:translateY(8px); } }
+.tx .hora { font:500 13px/1.4 var(--mono); color:var(--mute); }
+.tx .quien { grid-column:1; font:600 13px/1.2 var(--display); letter-spacing:.06em; text-transform:uppercase; color:var(--cyan); align-self:start; }
+.tx.torre .quien { color:var(--fg2); } .tx.mia .quien { color:var(--amber); }
+.tx .cuerpo { grid-column:2; grid-row:1 / span 2; min-width:0; display:grid; gap:7px; }
+.tx .oido { font-size:calc(19px * var(--esc)); line-height:1.4; font-weight:500; overflow-wrap:anywhere; }
+.tx .oido u { text-decoration:underline dotted var(--red); text-underline-offset:4px; text-decoration-thickness:2px; }
+.tx .asist { font-size:calc(14.5px * var(--esc)); color:var(--fg2); display:flex; gap:8px; align-items:baseline; }
+.tx .asist span { font:600 10.5px/1 var(--body); letter-spacing:.09em; text-transform:uppercase; color:var(--cyan); border:1px solid var(--cyan); border-radius:4px; padding:3px 5px; flex:none; }
+.fichas { display:flex; gap:6px; flex-wrap:wrap; }
+.ficha { display:inline-flex; gap:6px; align-items:baseline; background:var(--panel2); border:1px solid var(--line); border-radius:7px; padding:3px 8px; font-size:12px; color:var(--mute); }
+.ficha b { font:500 13.5px/1.3 var(--mono); color:var(--fg); }
+.tx .otra { grid-column:3; grid-row:1 / span 2; display:flex; flex-direction:column; gap:6px; align-items:flex-end; }
+.ic { width:40px; height:40px; border-radius:10px; border:1px solid var(--line2); background:none; display:grid; place-items:center; color:var(--fg2); }
+.ic:hover { border-color:var(--cyan); color:var(--cyan); } .ic.on { background:var(--amber-soft); border-color:var(--amber); color:var(--amber); }
+
+/* lado derecho */
+.lado { display:grid; gap:12px; grid-template-rows:auto minmax(0,1fr); min-height:0; }
+.tablero { background:var(--panel); border:1px solid var(--amber); border-radius:14px; padding:12px 14px 14px; }
+.tablero .cab2 { display:flex; justify-content:space-between; align-items:baseline; gap:10px; margin-bottom:10px; }
+.tablero h2 { margin:0; font:600 22px/1 var(--display); letter-spacing:.03em; color:var(--amber); }
+.celdas { display:grid; grid-template-columns:repeat(3, minmax(0,1fr)); gap:8px; }
+.celda { background:var(--panel2); border-radius:10px; padding:9px 11px; display:grid; gap:5px; min-width:0; }
+.celda b { font:600 26px/1 var(--mono); letter-spacing:-.01em; overflow-wrap:anywhere; } .celda small { color:var(--mute); font-size:11.5px; }
+.celda.cambio { animation:destello 1.6s ease-out; } @keyframes destello { from { background:var(--amber); color:var(--on-amber); } }
+.alcance { background:var(--panel); border:1px solid var(--line); border-radius:14px; display:flex; flex-direction:column; min-height:0; overflow:hidden; }
+.alcance > .cab, .alcance > .avion { flex:none; }
+.lienzo { position:relative; flex:1; min-height:150px; } .lienzo canvas { position:absolute; inset:0; width:100%; height:100%; display:block; }
+.sinred { position:absolute; inset:auto 12px 12px; background:var(--panel2); border:1px solid var(--line2); border-radius:10px; padding:9px 12px; font-size:13px; color:var(--fg2); }
+.avion { display:grid; grid-template-columns:96px minmax(0,1fr); gap:12px; padding:12px 14px; border-top:1px solid var(--line); align-items:center; }
+.foto { aspect-ratio:4 / 3; max-width:100%; border-radius:9px; background:linear-gradient(160deg, var(--panel2), var(--line)); display:grid; place-items:center; color:var(--fg2); position:relative; overflow:hidden; }
+.foto small { position:absolute; left:5px; bottom:4px; font-size:9.5px; color:var(--mute); }
+.avion h3 { margin:0; font:600 24px/1 var(--display); letter-spacing:.03em; color:var(--magenta); } .avion p { margin:3px 0 7px; color:var(--fg2); font-size:13px; }
+
+/* mando */
+.mando { display:flex; gap:10px; align-items:center; flex-wrap:wrap; padding:10px 12px; background:var(--panel); border:1px solid var(--line); border-radius:14px; }
+.gran { display:inline-flex; align-items:center; gap:10px; padding:0 24px; height:56px; border-radius:13px; border:0; background:var(--amber); color:var(--on-amber); font:700 21px/1 var(--display); letter-spacing:.05em; text-transform:uppercase; }
+.gran.oir { background:var(--green); color:#04210f; }
+.btn { height:48px; padding:0 15px; border-radius:11px; border:1px solid var(--line2); background:var(--panel2); font-weight:600; font-size:14px; display:inline-flex; align-items:center; gap:8px; }
+.btn:hover { border-color:var(--cyan); }
+.nota { margin-left:auto; color:var(--mute); font-size:12px; max-width:44ch; text-align:right; }
+#aviso { position:fixed; left:50%; bottom:calc(22px + env(safe-area-inset-bottom, 0px)); transform:translateX(-50%); background:var(--fg); color:var(--bg); padding:10px 16px; border-radius:10px; font-weight:600; font-size:14px; z-index:5; max-width:calc(100% - 32px); }
+
+@media (max-width:900px) {
+  html, body { height:auto; }
+  .app { grid-template-columns:minmax(0,1fr); grid-template-rows:none; height:auto; }
+  .lado { order:2; grid-template-rows:auto auto; } .escucha { order:3; } .mando { order:4; position:sticky; bottom:calc(8px + env(safe-area-inset-bottom, 0px)); }
+  .rollo { max-height:none; overflow:visible; } .lienzo { min-height:260px; }
+  .modo { margin-left:0; } .nota { margin-left:0; text-align:left; }
+  .tx { grid-template-columns:minmax(0,1fr) auto; } .tx .hora, .tx .quien { grid-column:1; display:inline; } .tx .cuerpo { grid-column:1; grid-row:auto; } .tx .otra { grid-column:2; grid-row:1 / span 3; }
+  .celda b { font-size:22px; } .gran { flex:1; justify-content:center; }
+}
+@media (prefers-reduced-motion: reduce) { * { animation:none !important; transition:none !important; scroll-behavior:auto !important; } }
+</style>
+
+<div class="app">
+  <header class="franja">
+    <div class="marca">RTTS<small>Radio a texto</small></div>
+    <span class="estado" id="estado" role="status"><i></i><span id="estadoT">Escuchando</span></span>
+    <div class="nivel" id="nivel" aria-hidden="true"><b></b><b></b><b></b><b></b><b></b><b></b><b></b><b></b><b></b><b></b></div>
+    <div class="dato"><span class="rot">Entrada</span><b>Línea · casco</b></div>
+    <div class="dato"><span class="rot">Hora UTC</span><b id="reloj">14:32:07</b></div>
+    <div class="dato"><span class="rot">Mi indicativo</span><b>HK-2947</b></div>
+    <div class="modo" role="group" aria-label="Conexión">
+      <button id="mRed" aria-pressed="true">Con internet</button><button id="mLocal" aria-pressed="false">Sin internet</button>
+    </div>
+  </header>
+
+  <section class="escucha" aria-label="Lo que se oye">
+    <div class="cab"><h2>Lo que se oye</h2>
+      <div class="filtro" role="group" aria-label="Filtro"><button id="fTodo" aria-pressed="true">Todo</button><button id="fMio" aria-pressed="false">Solo para mí</button></div></div>
+    <div class="rollo" id="rollo" aria-live="polite"></div>
+  </section>
+
+  <div class="lado">
+    <section class="tablero" aria-label="Lo último para mí">
+      <div class="cab2"><h2>Lo último para mí</h2><span class="rot" id="tabHora">hace un momento</span></div>
+      <div class="celdas" id="celdas"></div>
+    </section>
+    <section class="alcance" aria-label="Tráfico cerca">
+      <div class="cab"><h2>Tráfico cerca</h2><span class="rot" id="alcNota">anillos a 5, 10 y 20 NM</span></div>
+      <div class="lienzo"><canvas id="radar" role="img" aria-label="Aviones cercanos alrededor de mi posición"></canvas><div class="sinred" id="sinred" hidden>Sin internet: no se actualiza el tráfico. La transcripción sigue funcionando en la tableta.</div></div>
+      <div class="avion" id="avion"></div>
+    </section>
+  </div>
+
+  <footer class="mando">
+    <button class="gran" id="bOir">Pausar</button>
+    <button class="btn" id="bMarca">Marcar este momento</button>
+    <button class="btn" id="bMenos" aria-label="Letra más pequeña">A−</button><button class="btn" id="bMas" aria-label="Letra más grande">A+</button>
+    <span class="nota">Prototipo con datos inventados. Ayuda de escucha: no reemplaza la radio ni la autorización de la torre.</span>
+  </footer>
+</div>
+<div id="aviso" role="status" hidden></div>
+
+<script>
+const $ = s => document.querySelector(s);
+const esc = t => t.replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+/* Tráfico inventado. rumbo y demora en grados, distancia en millas náuticas. */
+const AVIONES = [
+  { id: 'AND8412', ind: 'Andes 8412', mat: 'HK-5512', tipo: 'Airbus A320', op: 'Aerolínea inventada', dem: 35, dist: 11.5, rumbo: 205, alt: 6500, vel: 210 },
+  { id: 'HK5106', ind: 'HK-5106', mat: 'HK-5106', tipo: 'Cessna 172', op: 'Escuela de vuelo', dem: 290, dist: 4.2, rumbo: 110, alt: 4500, vel: 95 },
+  { id: 'CDR327', ind: 'Cóndor 327', mat: 'HK-4733', tipo: 'ATR 72', op: 'Aerolínea inventada', dem: 160, dist: 17, rumbo: 350, alt: 9000, vel: 240 },
+  { id: 'HK3381', ind: 'HK-3381', mat: 'HK-3381', tipo: 'Piper PA-28', op: 'Particular', dem: 245, dist: 8.3, rumbo: 60, alt: 5500, vel: 105 }
+];
+/* Cada transmisión: lo que oyó el modelo local (con sus dudas entre <u>), la lectura asistida (solo con internet) y los datos sacados. */
+const GUION = [
+  { q: 'torre', de: 'Torre', a: 'AND8412', oido: 'Andes ocho cuatro uno dos, torre, viento dos siete cero con ocho, pista cero dos autorizado aterrizar', asist: 'Andes 8412, viento 270° a 8 kt, pista 02, autorizado a aterrizar.', f: [['Pista', '02'], ['Viento', '270/08']] },
+  { q: 'avion', de: 'Andes 8412', a: 'AND8412', oido: 'Autorizado aterrizar pista cero dos, Andes ocho cuatro uno dos', asist: 'Colación correcta: pista 02.', f: [['Pista', '02']] },
+  { q: 'torre', de: 'Torre', a: 'YO', mia: 1, oido: 'Hotel Kilo dos nueve cuatro siete, torre, mantenga cuatro mil quinientos pies, <u>cu ene hache</u> uno cero uno ocho', asist: 'HK-2947, mantenga 4.500 ft, QNH 1018.', f: [['Altitud', '4500 ft'], ['QNH', '1018']], t: { alt: '4500', qnh: '1018' } },
+  { q: 'avion', de: 'HK-5106', a: 'HK5106', oido: 'Torre, Hotel Kilo cinco uno cero seis, a cuatro millas al oeste con cuatro mil quinientos, para toque y despegue', asist: 'HK-5106, 4 NM al oeste, 4.500 ft, solicita toque y despegue.', f: [['Posición', '4 NM W'], ['Altitud', '4500 ft']] },
+  { q: 'torre', de: 'Torre', a: 'HK5106', oido: 'Cinco uno cero seis, número dos, siga al <u>a tres veinte</u> en final', asist: 'HK-5106, número 2, siga al A320 en final.', f: [['Turno', 'N.º 2']] },
+  { q: 'torre', de: 'Torre', a: 'YO', mia: 1, oido: 'Dos nueve cuatro siete, tráfico a sus dos, cuatro millas, un Cessna mismo nivel, reporte a la vista', asist: 'HK-2947: tráfico a las 2, 4 NM, Cessna al mismo nivel. Reporte a la vista.', f: [['Tráfico', 'a las 2 · 4 NM']], sel: 'HK5106' },
+  { q: 'torre', de: 'Torre', a: 'CDR327', oido: 'Cóndor tres dos siete, descienda a siete mil pies, comunique aproximación uno uno nueve decimal uno', asist: 'Cóndor 327, descienda a 7.000 ft, contacte aproximación en 119,1.', f: [['Altitud', '7000 ft'], ['Frecuencia', '119.100']] },
+  { q: 'torre', de: 'Torre', a: 'YO', mia: 1, oido: 'Hotel Kilo dos nueve cuatro siete, entre a básica derecha pista cero dos, número tres, transpondedor <u>cuatro dos uno cinco</u>', asist: 'HK-2947, básica derecha pista 02, número 3, transpondedor 4215.', f: [['Pista', '02'], ['Turno', 'N.º 3'], ['Transp.', '4215']], t: { pista: '02', turno: 'N.º 3', xpdr: '4215' } },
+  { q: 'avion', de: 'HK-3381', a: 'HK3381', oido: 'Torre, tres tres ocho uno, abandonando la zona por el suroeste, gracias', asist: 'HK-3381 abandona la zona por el suroeste.', f: [] },
+  { q: 'torre', de: 'Torre', a: 'YO', mia: 1, oido: 'Dos nueve cuatro siete, viento dos seis cero con diez, pista cero dos autorizado aterrizar', asist: 'HK-2947, viento 260° a 10 kt, pista 02, autorizado a aterrizar.', f: [['Pista', '02'], ['Viento', '260/10']], t: { viento: '260/10', turno: 'Autorizado' } }
+];
+let conRed = true, oyendo = true, soloMio = false, paso = 0, sel = 'AND8412', hablando = '', reloj = 14 * 3600 + 32 * 60 + 7, escala = 1;
+const tablero = { pista: '—', alt: '—', qnh: '—', turno: '—', xpdr: '—', viento: '—' };
+const ROT = { pista: 'Pista', alt: 'Altitud (ft)', qnh: 'QNH', turno: 'Turno', xpdr: 'Transp.', viento: 'Viento' };
+const hora = s => [s / 3600, s / 60 % 60, s % 60].map(n => String(Math.floor(n)).padStart(2, '0')).join(':');
+
+function aviso(t) { const a = $('#aviso'); a.textContent = t; a.hidden = false; clearTimeout(aviso.t); aviso.t = setTimeout(() => a.hidden = true, 2600); }
+function pintarTablero(cambios) {
+  $('#celdas').innerHTML = Object.keys(ROT).map(k => `<div class="celda${cambios && k in cambios ? ' cambio' : ''}"><span class="rot">${ROT[k]}</span><b>${esc(tablero[k])}</b></div>`).join('');
+}
+function txHtml(x, i, nueva) {
+  return `<article class="tx ${x.q === 'torre' ? 'torre' : ''} ${x.mia ? 'mia' : ''} ${nueva ? 'nueva' : ''}" data-i="${i}" ${soloMio && !x.mia ? 'hidden' : ''}>
+    <span class="hora">${x.hora}</span><span class="quien">${esc(x.de)}${x.mia ? ' → mí' : ''}</span>
+    <div class="cuerpo"><div class="oido">${x.oido}</div>
+      ${conRed ? `<div class="asist"><span>Asistido</span>${esc(x.asist)}</div>` : ''}
+      ${x.f.length ? `<div class="fichas">${x.f.map(([k, v]) => `<span class="ficha">${k}<b>${esc(v)}</b></span>`).join('')}</div>` : ''}</div>
+    <div class="otra"><button class="ic" data-oir="${i}" aria-label="Volver a oír esta transmisión"><svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg></button>
+      <button class="ic ${x.marca ? 'on' : ''}" data-marca="${i}" aria-label="Marcar esta transmisión" aria-pressed="${!!x.marca}"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 4h12v16l-6-4-6 4z"/></svg></button></div></article>`;
+}
+const dichas = [];
+function pintarRollo() {
+  $('#rollo').innerHTML = dichas.map((x, i) => txHtml(x, i)).join('');
+  enlazar(); $('#rollo').scrollTop = $('#rollo').scrollHeight;
+}
+function enlazar() {
+  document.querySelectorAll('[data-oir]').forEach(b => b.onclick = () => { b.classList.add('on'); aviso('Reproduciendo el audio de esa transmisión…'); setTimeout(() => b.classList.remove('on'), 2200); });
+  document.querySelectorAll('[data-marca]').forEach(b => b.onclick = () => { const x = dichas[+b.dataset.marca]; x.marca = !x.marca; b.classList.toggle('on', x.marca); b.setAttribute('aria-pressed', x.marca); aviso(x.marca ? 'Marcada: la encuentras al cerrar la sesión' : 'Marca quitada'); });
+}
+function decir(nueva) {
+  if (paso >= GUION.length) { oyendo = false; pintarMando(); $('#estadoT').textContent = 'Fin de la muestra'; return; }
+  const x = { ...GUION[paso++], hora: hora(reloj) }; dichas.push(x);
+  hablando = x.q === 'avion' ? x.a : ''; if (x.sel) sel = x.sel; else if (x.q === 'avion' && x.a !== 'YO') sel = x.a;
+  if (x.t) { Object.assign(tablero, x.t); pintarTablero(nueva ? x.t : null); $('#tabHora').textContent = x.hora + ' UTC'; }
+  if (nueva) { $('#rollo').insertAdjacentHTML('beforeend', txHtml(x, dichas.length - 1, true)); enlazar(); $('#rollo').scrollTop = $('#rollo').scrollHeight; }
+  pintarAvion();
+}
+function pintarAvion() {
+  const a = AVIONES.find(v => v.id === sel);
+  $('#avion').innerHTML = `<div class="foto"><svg width="54" height="54" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M12 2c.8 0 1.3.9 1.3 2v5.2l7.2 4.3v1.7l-7.2-2.2v4.3l2.2 1.6V20l-3.5-1-3.5 1v-1.100l2.200-1.600V13l-7.200 2.200v-1.700l7.200-4.300V4c0-1.100.500-2 1.300-2z"/></svg><small>${conRed ? 'foto con crédito' : 'sin foto'}</small></div>
+    <div><h3>${esc(a.ind)}</h3><p>${esc(a.tipo)} · ${esc(a.mat)} · ${esc(a.op)}</p>
+    <div class="fichas"><span class="ficha">Dist.<b>${a.dist.toFixed(1)} NM</b></span><span class="ficha">Demora<b>${String(a.dem).padStart(3, '0')}°</b></span><span class="ficha">Alt.<b>${a.alt} ft</b></span><span class="ficha">Vel.<b>${a.vel} kt</b></span></div></div>`;
+}
+/* Alcance: norte arriba, mi avión en el centro. Los colores salen de los mismos tokens que el resto. */
+function radar() {
+  const c = $('#radar'), r = c.getBoundingClientRect(), dpr = Math.min(devicePixelRatio || 1, 2);
+  if (!r.width) return; c.width = r.width * dpr; c.height = r.height * dpr;
+  const g = c.getContext('2d'); g.scale(dpr, dpr);
+  const cs = getComputedStyle(document.documentElement), col = n => cs.getPropertyValue(n).trim();
+  const cx = r.width / 2, cy = r.height / 2, R = Math.min(cx, cy) - 16, esc20 = R / 20;
+  g.clearRect(0, 0, r.width, r.height); g.lineWidth = 1; g.font = '500 11px "IBM Plex Mono", monospace'; g.textBaseline = 'middle';
+  for (const nm of [5, 10, 20]) { g.strokeStyle = col('--line2'); g.setLineDash(nm === 20 ? [] : [3, 5]); g.beginPath(); g.arc(cx, cy, nm * esc20, 0, 7); g.stroke(); g.fillStyle = col('--mute'); g.fillText(nm, cx + 4, cy - nm * esc20 + 9); }
+  g.setLineDash([]); g.fillStyle = col('--mute'); g.textAlign = 'center'; g.fillText('N', cx, cy - R - 7);
+  g.globalAlpha = conRed ? 1 : .35;
+  for (const a of AVIONES) {
+    const ang = (a.dem - 90) * Math.PI / 180, x = cx + Math.cos(ang) * a.dist * esc20, y = cy + Math.sin(ang) * a.dist * esc20;
+    const color = a.id === sel ? col('--magenta') : col('--cyan');
+    if (a.id === hablando && conRed) { g.strokeStyle = col('--amber'); g.lineWidth = 2; g.beginPath(); g.arc(x, y, 13 + (Date.now() / 120 % 8), 0, 7); g.stroke(); g.lineWidth = 1; }
+    g.save(); g.translate(x, y); g.rotate(a.rumbo * Math.PI / 180); g.fillStyle = color; g.beginPath(); g.moveTo(0, -9); g.lineTo(6, 7); g.lineTo(0, 3); g.lineTo(-6, 7); g.closePath(); g.fill(); g.restore();
+    g.fillStyle = color; g.textAlign = 'left'; g.fillText(a.ind, x + 11, y - 6); g.fillStyle = col('--fg2'); g.fillText(Math.round(a.alt / 100) + ' · ' + a.vel + 'kt', x + 11, y + 8);
+    a._x = x; a._y = y;
+  }
+  g.globalAlpha = 1; g.fillStyle = col('--amber'); g.beginPath(); g.moveTo(cx, cy - 10); g.lineTo(cx + 7, cy + 8); g.lineTo(cx, cy + 4); g.lineTo(cx - 7, cy + 8); g.closePath(); g.fill();
+}
+$('#radar').onclick = e => { const r = e.target.getBoundingClientRect(), x = e.clientX - r.left, y = e.clientY - r.top;
+  const a = AVIONES.map(v => [Math.hypot(v._x - x, v._y - y), v]).sort((p, q) => p[0] - q[0])[0]; if (a && a[0] < 44) { sel = a[1].id; pintarAvion(); } };
+function pintarMando() { const b = $('#bOir'); b.textContent = oyendo ? 'Pausar' : 'Escuchar radio'; b.classList.toggle('oir', !oyendo); $('#estado').classList.toggle('pausa', !oyendo); $('#estadoT').textContent = oyendo ? 'Escuchando' : 'En pausa'; }
+function modo(red) { conRed = red; $('#mRed').setAttribute('aria-pressed', red); $('#mLocal').setAttribute('aria-pressed', !red); $('#sinred').hidden = red; $('#alcNota').textContent = red ? 'anillos a 5, 10 y 20 NM' : 'última posición conocida'; pintarRollo(); pintarAvion(); aviso(red ? 'Con internet: lectura asistida y tráfico cerca' : 'Sin internet: todo se transcribe en la tableta'); }
+$('#mRed').onclick = () => modo(true); $('#mLocal').onclick = () => modo(false);
+$('#fTodo').onclick = () => { soloMio = false; $('#fTodo').setAttribute('aria-pressed', true); $('#fMio').setAttribute('aria-pressed', false); pintarRollo(); };
+$('#fMio').onclick = () => { soloMio = true; $('#fMio').setAttribute('aria-pressed', true); $('#fTodo').setAttribute('aria-pressed', false); pintarRollo(); };
+$('#bOir').onclick = () => { if (paso >= GUION.length) { paso = 4; dichas.length = 4; pintarRollo(); } oyendo = !oyendo; pintarMando(); };
+$('#bMarca').onclick = () => { const x = dichas[dichas.length - 1]; if (!x) return; x.marca = true; pintarRollo(); aviso('Momento marcado a las ' + x.hora + ' UTC'); };
+const letra = d => { escala = Math.min(1.5, Math.max(.85, escala + d)); document.documentElement.style.setProperty('--esc', escala); };
+$('#bMenos').onclick = () => letra(-.1); $('#bMas').onclick = () => letra(.1);
+
+for (let i = 0; i < 4; i++) { reloj += 9; decir(false); }      // la pantalla abre ya con trabajo a la vista
+pintarTablero(); pintarRollo(); pintarMando();
+setInterval(() => { reloj++; $('#reloj').textContent = hora(reloj); }, 1000);
+setInterval(() => { if (oyendo) decir(true); }, 5200);
+setInterval(() => { document.querySelectorAll('#nivel b').forEach((b, i) => b.style.height = (oyendo ? 15 + Math.random() * (i < 7 ? 80 : 35) : 12) + '%'); }, 140);
+(function bucle() { radar(); requestAnimationFrame(bucle); })();
+</script>

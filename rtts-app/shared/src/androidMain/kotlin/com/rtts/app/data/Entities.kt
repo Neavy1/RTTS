@@ -1,5 +1,6 @@
 package com.rtts.app.data
 
+import androidx.room.ColumnInfo
 import androidx.room.Entity
 import androidx.room.PrimaryKey
 
@@ -30,4 +31,5 @@ data class TranscriptSegmentEntity(
     val lang: String,
     val createdAtEpochMs: Long,
     val audioFilePath: String? = null,
+    @ColumnInfo(defaultValue = "0") val bookmarked: Boolean = false,
 )
