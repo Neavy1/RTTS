@@ -7,15 +7,19 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.selection.selectable
+import androidx.compose.foundation.selection.selectableGroup
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.semantics.Role
 import com.rtts.app.data.TranscriptSegmentEntity
 import com.rtts.app.extract.*
 import com.rtts.app.pipeline.CaptureStats
@@ -41,7 +45,9 @@ internal fun CabinScreen(
     onBookmark: (TranscriptSegmentEntity, Boolean) -> Unit,
 ) {
     val context = LocalContext.current
-    val prefs = remember { context.getSharedPreferences("rtts_cabin", Context.MODE_PRIVATE) }
+    val prefs = remember { context.getSharedPreferences(CABIN_PREFERENCES, Context.MODE_PRIVATE) }
+    var radioLanguage by remember { mutableStateOf(prefs.radioLanguage()) }
+    var editLanguage by remember { mutableStateOf(false) }
     var callsign by remember { mutableStateOf(prefs.getString("callsign", "").orEmpty()) }
     var scale by remember { mutableStateOf(prefs.getFloat("font_scale", 1f).let {
         if (it.isFinite()) it.coerceIn(.85f, 1.5f) else 1f
@@ -74,7 +80,7 @@ internal fun CabinScreen(
                 Column(Modifier.fillMaxSize().padding(12.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
                     if (wide) {
                         StatusStrip(isRunning, isStopping, isLive, captureStats, captureError,
-                            permissionDenied, callsign, defineCallsign)
+                            permissionDenied, callsign, defineCallsign, radioLanguage, { editLanguage = true })
                         Row(Modifier.weight(1f), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                             CabinPanel(Modifier.weight(1.5f).fillMaxHeight()) {
                                 TranscriptHeader(onlyMine) { onlyMine = it }
@@ -84,7 +90,7 @@ internal fun CabinScreen(
                                         TransmissionCard(segment, callsign,
                                             sessionStartEpochMs?.plus(segment.startMs) ?: segment.createdAtEpochMs,
                                             segment.id == playingSegmentId, { onPlay(segment) },
-                                            { onBookmark(segment, !segment.bookmarked) })
+                                            { onBookmark(segment, !segment.bookmarked) }, showLanguage = radioLanguage.isEmpty())
                                     }
                                 }
                             }
@@ -99,7 +105,7 @@ internal fun CabinScreen(
                         LazyColumn(state = listState, modifier = Modifier.weight(1f),
                             verticalArrangement = Arrangement.spacedBy(12.dp)) {
                             item { StatusStrip(isRunning, isStopping, isLive, captureStats, captureError,
-                                permissionDenied, callsign, defineCallsign) }
+                                permissionDenied, callsign, defineCallsign, radioLanguage, { editLanguage = true }) }
                             item { KneeboardPanel(board, callsign, defineCallsign) }
                             item { TranscriptHeader(onlyMine) { onlyMine = it } }
                             if (visible.isEmpty()) item { TranscriptEmpty(isRunning, onlyMine) }
@@ -107,7 +113,7 @@ internal fun CabinScreen(
                                 TransmissionCard(segment, callsign,
                                     sessionStartEpochMs?.plus(segment.startMs) ?: segment.createdAtEpochMs,
                                     segment.id == playingSegmentId, { onPlay(segment) },
-                                    { onBookmark(segment, !segment.bookmarked) })
+                                    { onBookmark(segment, !segment.bookmarked) }, showLanguage = radioLanguage.isEmpty())
                             }
                         }
                     }
@@ -120,6 +126,35 @@ internal fun CabinScreen(
                 }
             }
         }
+        if (editLanguage) AlertDialog(
+            onDismissRequest = { editLanguage = false },
+            title = { Text("Idioma de la radio") },
+            text = {
+                Column {
+                    if (isRunning) Text("El cambio se aplicará a la siguiente captura.")
+                    Column(Modifier.selectableGroup()) {
+                        listOf("en" to "Inglés", "es" to "Español", "" to "Automático").forEach { (value, label) ->
+                            Row(
+                                modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp).selectable(
+                                    selected = radioLanguage == value,
+                                    role = Role.RadioButton,
+                                    onClick = {
+                                        radioLanguage = value
+                                        prefs.edit().putString(RADIO_LANGUAGE_KEY, value).apply()
+                                    },
+                                ),
+                                verticalAlignment = Alignment.CenterVertically,
+                            ) {
+                                RadioButton(selected = radioLanguage == value, onClick = null)
+                                Text(label, modifier = Modifier.padding(start = 8.dp))
+                            }
+                        }
+                    }
+                }
+            },
+            confirmButton = { TextButton(onClick = { editLanguage = false },
+                modifier = Modifier.heightIn(min = 48.dp)) { Text("Cerrar") } },
+        )
         if (editCallsign) AlertDialog(
             onDismissRequest = { editCallsign = false },
             title = { Text("Mi indicativo") },

@@ -30,11 +30,15 @@ fun looksLikeHallucination(text: String): Boolean {
  *
  * Whisper's automatic language detection is unreliable on short (<5s) push-to-talk
  * transmissions -- found during the Fase 0 spike, where clips were mis-detected as
- * Japanese/Arabic/Portuguese instead of es/en. As a cheap mitigation, when the
- * auto-detected language falls outside the expected es/en set, we redecode once
- * forcing English (statistically the more common mis-detection case for ATC audio).
+ * Japanese/Arabic/Portuguese instead of es/en. A fixed preferred language avoids
+ * auto-detection and retries in the other language only for hallucination loops.
+ * An empty preferred language retains the automatic detection and retry policy.
  */
-class SherpaOnnxSttEngine(modelManager: ModelManager, val numThreads: Int = 4) : SttEngine {
+class SherpaOnnxSttEngine(
+    modelManager: ModelManager,
+    val numThreads: Int = 4,
+    private val preferredLanguage: String = "", // Preserve existing callers (including benchmarks).
+) : SttEngine {
 
     private val recognizer: OfflineRecognizer
     private val vad: Vad
@@ -57,7 +61,7 @@ class SherpaOnnxSttEngine(modelManager: ModelManager, val numThreads: Int = 4) :
         baseWhisperConfig = OfflineWhisperModelConfig(
             encoder = modelManager.whisperEncoderPath,
             decoder = modelManager.whisperDecoderPath,
-            language = "",
+            language = preferredLanguage,
             task = "transcribe",
         )
         val modelConfig = OfflineModelConfig(
@@ -121,7 +125,14 @@ class SherpaOnnxSttEngine(modelManager: ModelManager, val numThreads: Int = 4) :
     }
 
     private fun transcribeInternal(samples: FloatArray, sampleRate: Int): TranscriptResult {
-        val first = decodeOnce(samples, sampleRate, language = "")
+        val first = decodeOnce(samples, sampleRate, language = preferredLanguage)
+        if (preferredLanguage.isNotEmpty()) {
+            if (!looksLikeHallucination(first.text)) return first
+            retriedSegmentCount++
+            val retryLang = if (preferredLanguage == "en") "es" else "en"
+            val second = decodeOnce(samples, sampleRate, language = retryLang)
+            return if (!looksLikeHallucination(second.text)) second else first
+        }
         if (first.text.isBlank()) return first
         if (first.lang in EXPECTED_LANGUAGES && !looksLikeHallucination(first.text)) return first
 

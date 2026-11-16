@@ -23,7 +23,7 @@ import kotlinx.coroutines.delay
 @Composable
 internal fun StatusStrip(running: Boolean, stopping: Boolean, live: Boolean,
     stats: CaptureStats, error: String?, permissionDenied: Boolean,
-    callsign: String, onCallsign: () -> Unit) {
+    callsign: String, onCallsign: () -> Unit, radioLanguage: String, onLanguage: () -> Unit) {
     val c = LocalRttsCabinColors.current
     var now by remember { mutableStateOf(System.currentTimeMillis()) }
     LaunchedEffect(Unit) { while (true) { now = System.currentTimeMillis(); delay(1000) } }
@@ -57,6 +57,12 @@ internal fun StatusStrip(running: Boolean, stopping: Boolean, live: Boolean,
             Column {
                 Text("Entrada", color = c.muted, fontSize = 12.sp)
                 Text(if (!running) "Sin captura" else if (live) "Audio de radio" else "Archivo / muestras", color = c.text2)
+            }
+            TextButton(onClick = onLanguage, modifier = Modifier.sizeIn(minWidth = 48.dp, minHeight = 48.dp)) {
+                Column {
+                    Text("Idioma", color = c.muted, fontSize = 12.sp)
+                    Text(radioLanguageLabel(radioLanguage), color = c.amber, fontSize = 17.sp)
+                }
             }
             Column {
                 Text("Hora UTC", color = c.muted, fontSize = 12.sp)

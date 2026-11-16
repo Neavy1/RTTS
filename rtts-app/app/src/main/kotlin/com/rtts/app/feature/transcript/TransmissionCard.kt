@@ -25,7 +25,7 @@ import com.rtts.app.ui.theme.LocalRttsCabinColors
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
 internal fun TransmissionCard(segment: TranscriptSegmentEntity, callsign: String, epochMs: Long,
-    playing: Boolean, onPlay: () -> Unit, onBookmark: () -> Unit) {
+    playing: Boolean, onPlay: () -> Unit, onBookmark: () -> Unit, showLanguage: Boolean = false) {
     val c = LocalRttsCabinColors.current
     val mine = remember(segment.text, callsign) { isAddressedTo(segment.text, callsign) }
     val data = remember(segment.text) { extractInstruction(segment.text) }
@@ -36,6 +36,12 @@ internal fun TransmissionCard(segment: TranscriptSegmentEntity, callsign: String
             Column(Modifier.weight(1f).padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 Row(horizontalArrangement = Arrangement.spacedBy(12.dp), verticalAlignment = Alignment.CenterVertically) {
                     Text(utcTime(epochMs), fontSize = 13.sp, fontFamily = FontFamily.Monospace, color = c.muted)
+                    if (showLanguage && segment.lang in listOf("en", "es")) {
+                        Surface(color = c.panel2, shape = MaterialTheme.shapes.small) {
+                            Text(radioLanguageLabel(segment.lang), fontSize = 11.sp, color = c.muted,
+                                modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp))
+                        }
+                    }
                     Text(if (mine) "Para mí" else "Radio", color = if (mine) c.amber else c.cyan,
                         fontWeight = FontWeight.SemiBold)
                 }

@@ -68,6 +68,21 @@ class InstructionExtractorTest {
     }
 
     @Test
+    fun maintainWithThousandsComma() {
+        assertEquals(expected(altitud = "3000 ft"), extractInstruction("maintain 3,000"))
+    }
+
+    @Test
+    fun descendWithThousandsComma() {
+        assertEquals(expected(altitud = "7000 ft"), extractInstruction("descend 7,000 feet"))
+    }
+
+    @Test
+    fun maintainedWithThousandsComma() {
+        assertEquals(expected(altitud = "3000 ft"), extractInstruction("The center maintained 3,000."))
+    }
+
+    @Test
     fun missingInvalidAndConflictingDataRemainUnknown() {
         val cases = listOf(
             "Good morning, standby", "pista", "pista cuarenta", "QNH uno cero",

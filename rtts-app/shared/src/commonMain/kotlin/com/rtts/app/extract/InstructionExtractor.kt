@@ -23,6 +23,16 @@ fun extractInstruction(texto: String): Instruction {
     }
     fun digits(index: Int) = digitRun(t, index)
     fun number(index: Int) = numberRun(t, index)
+    fun altitudeNumber(index: Int): Pair<Int?, Int> {
+        // Whisper's written thousands separator belongs to altitudes, not decimal frequencies.
+        val whole = at(index)
+        val thousands = at(index + 2)
+        if (whole != null && Regex("[1-9][0-9]?").matches(whole) && at(index + 1) == "," &&
+            thousands != null && Regex("[0-9]{3}").matches(thousands)) {
+            return (whole + thousands).toIntOrNull() to (index + 3)
+        }
+        return number(index)
+    }
     fun decimal(index: Int): Pair<String, String>? {
         val (whole, end) = number(index)
         if (whole == null || at(end) !in listOf("decimal", "point", "punto", ".", ",")) return null
@@ -59,9 +69,9 @@ fun extractInstruction(texto: String): Instruction {
                 val (value, _) = number(p)
                 if (value != null && value in 1..600) put(1, "FL" + value.toString().padStart(3, '0'))
             }
-            "mantenga", "mantener", "ascienda", "descienda", "altitud", "maintain", "climb", "descend", "altitude" -> {
+            "mantenga", "mantener", "ascienda", "descienda", "altitud", "maintain", "maintained", "climb", "descend", "altitude" -> {
                 val p = skip(i + 1, "a", "hasta", "to", "and", "maintain", "la", "una", "altitud", "de")
-                val (value, end) = number(p)
+                val (value, end) = altitudeNumber(p)
                 if (value != null && value in 1..60000 && at(end) !in listOf("mil", "thousand", "hundred")) {
                     put(1, "$value ft")
                 }

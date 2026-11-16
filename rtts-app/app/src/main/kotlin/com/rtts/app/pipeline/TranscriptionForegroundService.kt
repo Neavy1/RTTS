@@ -22,6 +22,8 @@ import com.rtts.app.audio.UriAudioSource
 import com.rtts.app.audio.WavFileWriter
 import com.rtts.app.data.SessionEntity
 import com.rtts.app.data.TranscriptSegmentEntity
+import com.rtts.app.feature.transcript.CABIN_PREFERENCES
+import com.rtts.app.feature.transcript.radioLanguage
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.NonCancellable
@@ -87,6 +89,7 @@ class TranscriptionForegroundService : LifecycleService() {
 
     private fun startCapture(useFileSource: Boolean, pickedFileUri: Uri?) {
         if (_isRunning.value) return
+        val preferredLanguage = getSharedPreferences(CABIN_PREFERENCES, Context.MODE_PRIVATE).radioLanguage()
         startTranscriptionForeground(useMicrophone = !useFileSource && pickedFileUri == null)
         stopRequested = false
         _isStopping.value = false
@@ -107,7 +110,7 @@ class TranscriptionForegroundService : LifecycleService() {
                 val container = (application as RttsApplication).container
                 container.modelManager.ensureModelsExtracted()
 
-                val activeEngine = SherpaOnnxSttEngine(container.modelManager)
+                val activeEngine = SherpaOnnxSttEngine(container.modelManager, preferredLanguage = preferredLanguage)
                 engine = activeEngine
 
                 val userId = container.database.userDao().getFirstUser()?.id ?: 0L
