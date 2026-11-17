@@ -16,6 +16,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.rtts.app.pipeline.CaptureStats
+import com.rtts.app.i18n.LocalStrings
 import com.rtts.app.ui.theme.LocalRttsCabinColors
 import kotlinx.coroutines.delay
 
@@ -24,6 +25,7 @@ import kotlinx.coroutines.delay
 internal fun StatusStrip(running: Boolean, stopping: Boolean, live: Boolean,
     stats: CaptureStats, error: String?, permissionDenied: Boolean,
     callsign: String, onCallsign: () -> Unit, radioLanguage: String, onLanguage: () -> Unit) {
+    val strings = LocalStrings.current
     val c = LocalRttsCabinColors.current
     var now by remember { mutableStateOf(System.currentTimeMillis()) }
     LaunchedEffect(Unit) { while (true) { now = System.currentTimeMillis(); delay(1000) } }
@@ -31,18 +33,18 @@ internal fun StatusStrip(running: Boolean, stopping: Boolean, live: Boolean,
         FlowRow(Modifier.padding(12.dp), horizontalArrangement = Arrangement.spacedBy(18.dp),
             verticalArrangement = Arrangement.spacedBy(8.dp)) {
             Column {
-                Text("RTTS", fontSize = 26.sp, fontWeight = FontWeight.Bold)
-                Text("Radio a texto", color = c.muted, fontSize = 12.sp)
+                Text(strings.appName, fontSize = 26.sp, fontWeight = FontWeight.Bold)
+                Text(strings.radioToText, color = c.muted, fontSize = 12.sp)
             }
             Surface(color = if (running) c.green.copy(alpha = .14f) else c.panel2,
                 shape = MaterialTheme.shapes.large) {
-                Text(when { stopping -> "Terminando…"; running -> "Escuchando"; else -> "En pausa" },
+                Text(when { stopping -> strings.finishing; running -> strings.listening; else -> strings.paused },
                     color = if (running) c.green else c.text2, modifier = Modifier.padding(12.dp))
             }
             Column {
-                Text("Nivel de entrada", color = c.muted, fontSize = 12.sp)
+                Text(strings.inputLevel, color = c.muted, fontSize = 12.sp)
                 Canvas(Modifier.size(70.dp, 26.dp).semantics {
-                    contentDescription = "Nivel de entrada"
+                    contentDescription = strings.inputLevel
                     progressBarRangeInfo = ProgressBarRangeInfo(
                         if (running && !stopping) stats.inputLevel.coerceIn(0f, 1f) else 0f, 0f..1f)
                 }) {
@@ -55,33 +57,33 @@ internal fun StatusStrip(running: Boolean, stopping: Boolean, live: Boolean,
                 }
             }
             Column {
-                Text("Entrada", color = c.muted, fontSize = 12.sp)
-                Text(if (!running) "Sin captura" else if (live) "Audio de radio" else "Archivo / muestras", color = c.text2)
+                Text(strings.input, color = c.muted, fontSize = 12.sp)
+                Text(if (!running) strings.noCapture else if (live) strings.radioAudio else strings.fileSamples, color = c.text2)
             }
             TextButton(onClick = onLanguage, modifier = Modifier.sizeIn(minWidth = 48.dp, minHeight = 48.dp)) {
                 Column {
-                    Text("Idioma", color = c.muted, fontSize = 12.sp)
-                    Text(radioLanguageLabel(radioLanguage), color = c.amber, fontSize = 17.sp)
+                    Text(strings.language, color = c.muted, fontSize = 12.sp)
+                    Text(strings.radioLanguageLabel(radioLanguage), color = c.amber, fontSize = 17.sp)
                 }
             }
             Column {
-                Text("Hora UTC", color = c.muted, fontSize = 12.sp)
+                Text(strings.utcTime, color = c.muted, fontSize = 12.sp)
                 Text(utcTime(now), fontFamily = FontFamily.Monospace, fontSize = 17.sp)
             }
             TextButton(onClick = onCallsign, modifier = Modifier.heightIn(min = 48.dp)) {
                 Column {
-                    Text("Mi indicativo", color = c.muted, fontSize = 12.sp)
-                    Text(callsign.ifEmpty { "Tocar para definir" }, color = c.amber, fontSize = 17.sp)
+                    Text(strings.myCallsign, color = c.muted, fontSize = 12.sp)
+                    Text(callsign.ifEmpty { strings.tapToSet }, color = c.amber, fontSize = 17.sp)
                 }
             }
         }
-        if (permissionDenied) Text("Se necesita permiso de micrófono para escuchar el audio de la radio.",
+        if (permissionDenied) Text(strings.microphonePermission,
             color = c.red, modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp))
-        error?.let { Text(it, color = c.red, modifier = Modifier.padding(12.dp)) }
-        if (stopping) Text("Finalizando transcripción pendiente…", color = c.text2,
+        error?.let { Text(strings.captureFailed, color = c.red, modifier = Modifier.padding(12.dp)) }
+        if (stopping) Text(strings.finishingTranscript, color = c.text2,
             modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp))
         if (stats.queuedSeconds > 0.0 || stats.droppedChunks > 0) {
-            Text("Audio en cola: %.1f s · Trozos descartados: %d".format(stats.queuedSeconds, stats.droppedChunks),
+            Text(strings.queueStatus("%.1f".format(stats.queuedSeconds), stats.droppedChunks),
                 color = if (stats.droppedChunks > 0) c.red else c.text2,
                 style = MaterialTheme.typography.labelSmall, modifier = Modifier.padding(12.dp))
         }

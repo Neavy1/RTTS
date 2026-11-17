@@ -10,6 +10,16 @@ class CallsignResolverTest {
     private fun resolve(text: String, session: Map<String, String> = emptyMap()) =
         resolveCallsign(spoken(text), catalog, session)
 
+    @Test fun interruptedNumberDoesNotReturnAnIncompleteCallsign() {
+        listOf("or", "and", "oh").forEach { gap ->
+            assertTrue(findCallsigns("Europa 0-9 $gap 7 heavy descend via the arrival").isEmpty(), gap)
+        }
+    }
+
+    @Test fun uninterruptedEuropaNumberStillResolvesWithHeavy() {
+        assertEquals("Europa 097 heavy", resolve("Europa zero niner seven heavy").texto)
+    }
+
     @Test fun catalogIsExtensibleAndContainsAtLeastSixtyDesignators() {
         assertTrue(catalog.size >= 60)
         assertTrue("Europa" in catalog && "Dragster" in catalog && "Brickyard" in catalog)

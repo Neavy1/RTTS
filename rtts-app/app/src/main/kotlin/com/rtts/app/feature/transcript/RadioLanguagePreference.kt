@@ -7,9 +7,3 @@ internal const val RADIO_LANGUAGE_KEY = "radio_language"
 
 internal fun SharedPreferences.radioLanguage(): String =
     getString(RADIO_LANGUAGE_KEY, "en")?.takeIf { it in listOf("en", "es", "") } ?: "en"
-
-internal fun radioLanguageLabel(language: String): String = when (language) {
-    "en" -> "EN"
-    "es" -> "ES"
-    else -> "AUTO"
-}

@@ -19,6 +19,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.rtts.app.data.TranscriptSegmentEntity
 import com.rtts.app.extract.*
+import com.rtts.app.i18n.LocalStrings
 import com.rtts.app.ui.theme.LocalRttsCabinColors
 
 @OptIn(ExperimentalLayoutApi::class)
@@ -26,6 +27,7 @@ import com.rtts.app.ui.theme.LocalRttsCabinColors
 internal fun TransmissionCard(segment: TranscriptSegmentEntity, callsign: String, epochMs: Long,
     playing: Boolean, onPlay: () -> Unit, onBookmark: () -> Unit, showLanguage: Boolean = false,
     catalog: List<String> = callsignCatalog(), sessionDesignators: Map<String, String> = emptyMap()) {
+    val strings = LocalStrings.current
     val c = LocalRttsCabinColors.current
     val mine = remember(segment.text, callsign) { isAddressedTo(segment.text, callsign) }
     val data = remember(segment.text) { extractInstruction(segment.text) }
@@ -42,11 +44,11 @@ internal fun TransmissionCard(segment: TranscriptSegmentEntity, callsign: String
                     Text(utcTime(epochMs), fontSize = 13.sp, fontFamily = FontFamily.Monospace, color = c.muted)
                     if (showLanguage && segment.lang in listOf("en", "es")) {
                         Surface(color = c.panel2, shape = MaterialTheme.shapes.small) {
-                            Text(radioLanguageLabel(segment.lang), fontSize = 11.sp, color = c.muted,
+                            Text(strings.radioLanguageLabel(segment.lang), fontSize = 11.sp, color = c.muted,
                                 modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp))
                         }
                     }
-                    Text(if (mine) "Para mí" else "Radio", color = if (mine) c.amber else c.cyan,
+                    Text(if (mine) strings.forMe else strings.radio, color = if (mine) c.amber else c.cyan,
                         fontWeight = FontWeight.SemiBold)
                 }
                 Text(segment.text, fontSize = 19.sp, lineHeight = 26.6.sp, fontWeight = FontWeight.Medium)
@@ -54,11 +56,11 @@ internal fun TransmissionCard(segment: TranscriptSegmentEntity, callsign: String
                     val callsignChips = resolved.map {
                         val corrected = it.confianza in listOf(Confianza.PARECIDA, Confianza.POR_SESION) &&
                             it.texto != it.original
-                        "Indicativo" to (if (corrected) "≈ ${it.texto}" else it.texto)
+                        strings.callsign to (if (corrected) strings.correctedCallsign(it.texto) else it.texto)
                     }
-                    (callsignChips + listOf("Pista" to data.pista, "Altitud" to data.altitud, "QNH" to data.qnh,
-                        "Frecuencia" to data.frecuencia, "Transp." to data.transpondedor,
-                        "Viento" to data.viento, "Turno" to data.turno)).forEach { (label, value) ->
+                    (callsignChips + listOf(strings.runway to data.pista, strings.altitude to data.altitud, strings.qnh to data.qnh,
+                        strings.frequency to data.frecuencia, strings.squawk to data.transpondedor,
+                        strings.wind to data.viento, strings.sequence to data.turno?.let(strings::sequenceLabel))).forEach { (label, value) ->
                         if (value != null) Surface(color = c.panel2, shape = MaterialTheme.shapes.small,
                             border = BorderStroke(1.dp, c.line)) {
                             Row(Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
@@ -73,13 +75,13 @@ internal fun TransmissionCard(segment: TranscriptSegmentEntity, callsign: String
             Column(Modifier.padding(vertical = 6.dp)) {
                 IconButton(onClick = onPlay, enabled = segment.audioFilePath != null, modifier = Modifier.size(48.dp)) {
                     Icon(if (playing) Icons.Filled.Pause else Icons.Filled.PlayArrow,
-                        contentDescription = if (playing) "Pausar transmisión" else "Volver a oír esta transmisión",
+                        contentDescription = if (playing) strings.pauseTransmission else strings.replayTransmission,
                         tint = if (segment.audioFilePath == null) c.muted else if (playing) c.magenta else c.cyan)
                 }
                 IconToggleButton(checked = segment.bookmarked, onCheckedChange = { onBookmark() },
                     modifier = Modifier.size(48.dp)) {
                     Icon(if (segment.bookmarked) Icons.Filled.Bookmark else Icons.Filled.BookmarkBorder,
-                        contentDescription = if (segment.bookmarked) "Quitar marca de esta transmisión" else "Marcar esta transmisión",
+                        contentDescription = if (segment.bookmarked) strings.unmarkTransmission else strings.markTransmission,
                         tint = if (segment.bookmarked) c.amber else c.text2)
                 }
             }

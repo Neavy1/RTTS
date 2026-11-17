@@ -24,6 +24,9 @@ import com.rtts.app.data.TranscriptSegmentEntity
 import com.rtts.app.extract.*
 import com.rtts.app.pipeline.CaptureStats
 import com.rtts.app.ui.theme.LocalCabinFontScale
+import com.rtts.app.i18n.LocalStrings
+import com.rtts.app.i18n.AppLanguage
+import com.rtts.app.i18n.stringsFor
 import com.rtts.app.ui.theme.LocalRttsCabinColors
 import java.text.SimpleDateFormat
 import java.util.Date
@@ -46,6 +49,8 @@ internal fun CabinScreen(
 ) {
     val context = LocalContext.current
     val prefs = remember { context.getSharedPreferences(CABIN_PREFERENCES, Context.MODE_PRIVATE) }
+    var appLanguage by remember { mutableStateOf(prefs.appLanguage()) }
+    var editAppLanguage by remember { mutableStateOf(false) }
     var radioLanguage by remember { mutableStateOf(prefs.radioLanguage()) }
     var editLanguage by remember { mutableStateOf(false) }
     var callsign by remember { mutableStateOf(prefs.getString("callsign", "").orEmpty()) }
@@ -56,6 +61,7 @@ internal fun CabinScreen(
     var draft by remember { mutableStateOf("") }
     var onlyMine by remember { mutableStateOf(false) }
     val density = LocalDensity.current
+    val strings = stringsFor(appLanguage)
     val c = LocalRttsCabinColors.current
     val transmissions = remember(segments, sessionStartEpochMs) {
         segments.map { KneeboardTransmission(it.text, sessionStartEpochMs?.plus(it.startMs) ?: it.createdAtEpochMs) }
@@ -70,6 +76,7 @@ internal fun CabinScreen(
     }
     val listState = rememberLazyListState()
     CompositionLocalProvider(
+        LocalStrings provides strings,
         LocalCabinFontScale provides scale,
         LocalDensity provides Density(density.density, density.fontScale * scale),
     ) {
@@ -128,18 +135,44 @@ internal fun CabinScreen(
                         { delta ->
                             scale = (scale + delta).coerceIn(.85f, 1.5f)
                             prefs.edit().putFloat("font_scale", scale).apply()
-                        }, onSamples, onPickFile)
+                        }, onSamples, onPickFile, { editAppLanguage = true })
                 }
             }
         }
+        if (editAppLanguage) AlertDialog(
+            onDismissRequest = { editAppLanguage = false },
+            title = { Text(strings.appLanguage) },
+            text = {
+                Column(Modifier.selectableGroup()) {
+                    listOf(AppLanguage.EN to strings.english, AppLanguage.ES to strings.spanish).forEach { (value, label) ->
+                        Row(
+                            modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp).selectable(
+                                selected = appLanguage == value,
+                                role = Role.RadioButton,
+                                onClick = {
+                                    appLanguage = value
+                                    prefs.edit().putString(APP_LANGUAGE_KEY, value.name).apply()
+                                },
+                            ),
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            RadioButton(selected = appLanguage == value, onClick = null)
+                            Text(label, modifier = Modifier.padding(start = 8.dp))
+                        }
+                    }
+                }
+            },
+            confirmButton = { TextButton(onClick = { editAppLanguage = false },
+                modifier = Modifier.heightIn(min = 48.dp)) { Text(strings.close) } },
+        )
         if (editLanguage) AlertDialog(
             onDismissRequest = { editLanguage = false },
-            title = { Text("Idioma de la radio") },
+            title = { Text(strings.radioLanguage) },
             text = {
                 Column {
-                    if (isRunning) Text("El cambio se aplicará a la siguiente captura.")
+                    if (isRunning) Text(strings.nextCapture)
                     Column(Modifier.selectableGroup()) {
-                        listOf("en" to "Inglés", "es" to "Español", "" to "Automático").forEach { (value, label) ->
+                        listOf("en" to strings.english, "es" to strings.spanish, "" to strings.automatic).forEach { (value, label) ->
                             Row(
                                 modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp).selectable(
                                     selected = radioLanguage == value,
@@ -159,20 +192,20 @@ internal fun CabinScreen(
                 }
             },
             confirmButton = { TextButton(onClick = { editLanguage = false },
-                modifier = Modifier.heightIn(min = 48.dp)) { Text("Cerrar") } },
+                modifier = Modifier.heightIn(min = 48.dp)) { Text(strings.close) } },
         )
         if (editCallsign) AlertDialog(
             onDismissRequest = { editCallsign = false },
-            title = { Text("Mi indicativo") },
+            title = { Text(strings.myCallsign) },
             text = { OutlinedTextField(value = draft, onValueChange = { draft = it },
-                singleLine = true, label = { Text("Indicativo (por ejemplo HK-2947)") }) },
+                singleLine = true, label = { Text(strings.callsignExample) }) },
             confirmButton = { TextButton(onClick = {
                 callsign = normalizeCallsign(draft)
                 prefs.edit().putString("callsign", callsign).apply()
                 editCallsign = false
-            }, modifier = Modifier.heightIn(min = 48.dp)) { Text("Guardar") } },
+            }, modifier = Modifier.heightIn(min = 48.dp)) { Text(strings.save) } },
             dismissButton = { TextButton(onClick = { editCallsign = false },
-                modifier = Modifier.heightIn(min = 48.dp)) { Text("Cancelar") } },
+                modifier = Modifier.heightIn(min = 48.dp)) { Text(strings.cancel) } },
         )
     }
 }
@@ -190,19 +223,21 @@ internal fun CabinPanel(modifier: Modifier = Modifier, amber: Boolean = false,
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
 private fun TranscriptHeader(onlyMine: Boolean, onFilter: (Boolean) -> Unit) {
+    val strings = LocalStrings.current
     FlowRow(Modifier.fillMaxWidth().padding(12.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-        Text("Lo que se oye", style = MaterialTheme.typography.titleLarge,
+        Text(strings.onFrequency, style = MaterialTheme.typography.titleLarge,
             modifier = Modifier.padding(vertical = 12.dp))
-        FilterChip(selected = !onlyMine, onClick = { onFilter(false) }, label = { Text("Todo") },
+        FilterChip(selected = !onlyMine, onClick = { onFilter(false) }, label = { Text(strings.all) },
             modifier = Modifier.heightIn(min = 48.dp))
-        FilterChip(selected = onlyMine, onClick = { onFilter(true) }, label = { Text("Solo para mí") },
+        FilterChip(selected = onlyMine, onClick = { onFilter(true) }, label = { Text(strings.forMeOnly) },
             modifier = Modifier.heightIn(min = 48.dp))
     }
 }
 
 @Composable
 private fun TranscriptEmpty(running: Boolean, filtered: Boolean) {
-    Text(if (filtered) "Aún no hay transmisiones para mi indicativo."
-        else if (running) "Escuchando… el texto aparecerá aquí."
-        else "Inicia una captura para ver la transcripción.", modifier = Modifier.padding(16.dp))
+    val strings = LocalStrings.current
+    Text(if (filtered) strings.noTransmissionsForMe
+        else if (running) strings.listeningEmpty
+        else strings.startCapture, modifier = Modifier.padding(16.dp))
 }

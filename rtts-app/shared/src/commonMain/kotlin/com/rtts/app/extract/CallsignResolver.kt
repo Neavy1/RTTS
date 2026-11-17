@@ -31,6 +31,20 @@ fun findCallsigns(texto: String): List<SpokenCallsign> {
     while (i < tokens.size) {
         if (digitToken(tokens[i]) == null) { i++; continue }
         val (number, end) = digitRun(tokens, i)
+        // A short non-number between digit runs makes the flight number uncertain.
+        // Skip the whole broken run so its trailing digits cannot become a new callsign.
+        // "oh" is normally a zero alias, but inside an already-started number
+        // followed by more digits it is also an ambiguous interruption.
+        val ambiguousOh = (i + 1 until end).any { index ->
+            tokens[index] == "oh" && tokens.getOrNull(index + 1)?.let { digitToken(it) } != null
+        }
+        val gap = tokens.getOrNull(end)
+        val interrupted = gap != null && gap.length in 1..3 && gap.all(Char::isLetter) &&
+            digitToken(gap) == null && tokens.getOrNull(end + 1)?.let { digitToken(it) } != null
+        if (ambiguousOh || interrupted) {
+            i = if (interrupted) digitRun(tokens, end + 1).second else end
+            continue
+        }
         var before = i - 1
         if (tokens.getOrNull(before) == ",") before--
         val lastWord = tokens.getOrNull(before)

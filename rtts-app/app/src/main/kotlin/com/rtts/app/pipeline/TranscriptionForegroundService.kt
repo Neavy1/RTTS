@@ -5,6 +5,7 @@ import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.content.Context
 import android.content.Intent
+import android.content.SharedPreferences
 import android.content.pm.ServiceInfo
 import android.net.Uri
 import android.os.Build
@@ -24,6 +25,9 @@ import com.rtts.app.data.SessionEntity
 import com.rtts.app.data.TranscriptSegmentEntity
 import com.rtts.app.feature.transcript.CABIN_PREFERENCES
 import com.rtts.app.feature.transcript.radioLanguage
+import com.rtts.app.feature.transcript.APP_LANGUAGE_KEY
+import com.rtts.app.feature.transcript.appLanguage
+import com.rtts.app.i18n.stringsFor
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.NonCancellable
@@ -44,6 +48,23 @@ private const val AUDIO_QUEUE_CAPACITY = 1500 // About five minutes of 200 ms li
 data class CaptureStats(val inputLevel: Float = 0f, val droppedChunks: Long = 0, val queuedSeconds: Double = 0.0)
 
 class TranscriptionForegroundService : LifecycleService() {
+
+    private val cabinPreferences by lazy { getSharedPreferences(CABIN_PREFERENCES, Context.MODE_PRIVATE) }
+    private val strings get() = stringsFor(cabinPreferences.appLanguage())
+    private val languageListener = SharedPreferences.OnSharedPreferenceChangeListener { _, key ->
+        if (key == APP_LANGUAGE_KEY) {
+            if (_captureError.value != null) _captureError.value = strings.captureFailed
+            if (_isRunning.value) {
+                val manager = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+                manager.notify(NOTIFICATION_ID, buildNotification())
+            }
+        }
+    }
+
+    override fun onCreate() {
+        super.onCreate()
+        cabinPreferences.registerOnSharedPreferenceChangeListener(languageListener)
+    }
 
     @Volatile
     private var audioSource: AudioSource? = null
@@ -187,7 +208,7 @@ class TranscriptionForegroundService : LifecycleService() {
                 throw e
             } catch (e: Exception) {
                 android.util.Log.e("RttsCapture", "Error de transcripción", e)
-                _captureError.value = "No se pudo completar la captura. Revisa el permiso de micrófono y la fuente de audio."
+                _captureError.value = strings.captureFailed
             } finally {
                 audioSource?.stop()
                 audioSource = null
@@ -261,6 +282,7 @@ class TranscriptionForegroundService : LifecycleService() {
     }
 
     override fun onDestroy() {
+        cabinPreferences.unregisterOnSharedPreferenceChangeListener(languageListener)
         stopRequested = true
         audioSource?.stop()
         super.onDestroy()
@@ -282,14 +304,14 @@ class TranscriptionForegroundService : LifecycleService() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             val channel = NotificationChannel(
                 NOTIFICATION_CHANNEL_ID,
-                "Transcripción RTTS",
+                strings.notificationChannel,
                 NotificationManager.IMPORTANCE_LOW,
             )
             manager.createNotificationChannel(channel)
         }
         return NotificationCompat.Builder(this, NOTIFICATION_CHANNEL_ID)
-            .setContentTitle("RTTS grabando")
-            .setContentText("Transcribiendo comunicación en vivo")
+            .setContentTitle(strings.notificationTitle)
+            .setContentText(strings.notificationText)
             .setSmallIcon(android.R.drawable.ic_btn_speak_now)
             .setOngoing(true)
             .build()
