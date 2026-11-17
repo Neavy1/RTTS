@@ -18,17 +18,21 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.rtts.app.data.TranscriptSegmentEntity
-import com.rtts.app.extract.extractInstruction
-import com.rtts.app.extract.isAddressedTo
+import com.rtts.app.extract.*
 import com.rtts.app.ui.theme.LocalRttsCabinColors
 
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
 internal fun TransmissionCard(segment: TranscriptSegmentEntity, callsign: String, epochMs: Long,
-    playing: Boolean, onPlay: () -> Unit, onBookmark: () -> Unit, showLanguage: Boolean = false) {
+    playing: Boolean, onPlay: () -> Unit, onBookmark: () -> Unit, showLanguage: Boolean = false,
+    catalog: List<String> = callsignCatalog(), sessionDesignators: Map<String, String> = emptyMap()) {
     val c = LocalRttsCabinColors.current
     val mine = remember(segment.text, callsign) { isAddressedTo(segment.text, callsign) }
     val data = remember(segment.text) { extractInstruction(segment.text) }
+    val resolved = remember(segment.text, catalog, sessionDesignators) {
+        findCallsigns(segment.text).map { resolveCallsign(it, catalog, sessionDesignators) }
+            .filter { it.confianza != Confianza.DESCONOCIDA }
+    }
     Surface(color = if (mine) c.amberSoft else c.panel, contentColor = c.text,
         border = BorderStroke(1.dp, if (playing) c.magenta else c.line)) {
         Row(Modifier.fillMaxWidth().height(IntrinsicSize.Min)) {
@@ -47,9 +51,14 @@ internal fun TransmissionCard(segment: TranscriptSegmentEntity, callsign: String
                 }
                 Text(segment.text, fontSize = 19.sp, lineHeight = 26.6.sp, fontWeight = FontWeight.Medium)
                 FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                    listOf("Pista" to data.pista, "Altitud" to data.altitud, "QNH" to data.qnh,
+                    val callsignChips = resolved.map {
+                        val corrected = it.confianza in listOf(Confianza.PARECIDA, Confianza.POR_SESION) &&
+                            it.texto != it.original
+                        "Indicativo" to (if (corrected) "≈ ${it.texto}" else it.texto)
+                    }
+                    (callsignChips + listOf("Pista" to data.pista, "Altitud" to data.altitud, "QNH" to data.qnh,
                         "Frecuencia" to data.frecuencia, "Transp." to data.transpondedor,
-                        "Viento" to data.viento, "Turno" to data.turno).forEach { (label, value) ->
+                        "Viento" to data.viento, "Turno" to data.turno)).forEach { (label, value) ->
                         if (value != null) Surface(color = c.panel2, shape = MaterialTheme.shapes.small,
                             border = BorderStroke(1.dp, c.line)) {
                             Row(Modifier.padding(horizontal = 8.dp, vertical = 4.dp),

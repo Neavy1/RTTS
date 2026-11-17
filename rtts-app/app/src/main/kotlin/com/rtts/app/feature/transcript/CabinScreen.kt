@@ -60,6 +60,10 @@ internal fun CabinScreen(
     val transmissions = remember(segments, sessionStartEpochMs) {
         segments.map { KneeboardTransmission(it.text, sessionStartEpochMs?.plus(it.startMs) ?: it.createdAtEpochMs) }
     }
+    val catalog = remember { callsignCatalog() }
+    val sessionDesignators = remember(segments, catalog) {
+        sessionCallsigns(segments.map { it.text }, catalog)
+    }
     val board = remember(transmissions, callsign) { buildKneeboard(transmissions, callsign) }
     val visible = remember(segments, onlyMine, callsign) {
         if (onlyMine) segments.filter { isAddressedTo(it.text, callsign) } else segments
@@ -90,7 +94,8 @@ internal fun CabinScreen(
                                         TransmissionCard(segment, callsign,
                                             sessionStartEpochMs?.plus(segment.startMs) ?: segment.createdAtEpochMs,
                                             segment.id == playingSegmentId, { onPlay(segment) },
-                                            { onBookmark(segment, !segment.bookmarked) }, showLanguage = radioLanguage.isEmpty())
+                                            { onBookmark(segment, !segment.bookmarked) }, showLanguage = radioLanguage.isEmpty(),
+                                            catalog = catalog, sessionDesignators = sessionDesignators)
                                     }
                                 }
                             }
@@ -113,7 +118,8 @@ internal fun CabinScreen(
                                 TransmissionCard(segment, callsign,
                                     sessionStartEpochMs?.plus(segment.startMs) ?: segment.createdAtEpochMs,
                                     segment.id == playingSegmentId, { onPlay(segment) },
-                                    { onBookmark(segment, !segment.bookmarked) }, showLanguage = radioLanguage.isEmpty())
+                                    { onBookmark(segment, !segment.bookmarked) }, showLanguage = radioLanguage.isEmpty(),
+                                    catalog = catalog, sessionDesignators = sessionDesignators)
                             }
                         }
                     }
