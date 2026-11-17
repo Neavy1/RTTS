@@ -12,6 +12,10 @@ import com.k2fsa.sherpa.onnx.VadModelConfig
 /** Languages the ATC comms are expected to be in. Anything else is treated as a mis-detection. */
 private val EXPECTED_LANGUAGES = setOf("es", "en")
 
+private const val HISTORY_SAMPLES = 16000 * 30      // 30 s de audio reciente (el VAD corta los tramos a 20 s)
+private const val PRE_ROLL_SAMPLES = 16000 * 45 / 100  // 0,45 s antes de donde el VAD marca el inicio
+private const val POST_ROLL_SAMPLES = 16000 * 20 / 100 // 0,20 s después del final
+
 /**
  * Cheap detector for Whisper's repetition-loop failure mode ("shoot or shoot or shoot..."),
  * which tends to show up on ambiguous/noisy segments. Flags text with very few distinct words
@@ -91,15 +95,46 @@ class SherpaOnnxSttEngine(
         vad = Vad(config = vadModelConfig)
     }
 
-    override fun acceptAudioChunk(samples: FloatArray): List<AudioSegment> {
-        val t0 = System.nanoTime()
-        vad.acceptWaveform(samples)
+    // El VAD entrega el tramo desde que está seguro de que hay voz: se come el arranque de la transmisión,
+    // que en radio es justo el indicativo. Se guarda el audio reciente para devolverle ese arranque (y un poco de cola).
+    private val history = FloatArray(HISTORY_SAMPLES)
+    private var totalSamplesFed = 0L
+
+    private fun remember(samples: FloatArray) {
+        for (s in samples) {
+            history[(totalSamplesFed % HISTORY_SAMPLES).toInt()] = s
+            totalSamplesFed++
+        }
+    }
+
+    /** El tramo del VAD con [PRE_ROLL_SAMPLES] antes y [POST_ROLL_SAMPLES] después, si ese audio sigue en la memoria. */
+    private fun padded(start: Int, samples: FloatArray): AudioSegment {
+        val from = maxOf(0L, start.toLong() - PRE_ROLL_SAMPLES)
+        val to = minOf(totalSamplesFed, start.toLong() + samples.size + POST_ROLL_SAMPLES)
+        val oldestKept = maxOf(0L, totalSamplesFed - HISTORY_SAMPLES)
+        if (from < oldestKept || to <= from || start.toLong() + samples.size > totalSamplesFed) {
+            return AudioSegment(startSample = start, samples = samples) // ya no está en memoria: se usa tal cual
+        }
+        val out = FloatArray((to - from).toInt())
+        for (i in out.indices) out[i] = history[((from + i) % HISTORY_SAMPLES).toInt()]
+        return AudioSegment(startSample = from.toInt(), samples = out)
+    }
+
+    private fun drainVad(): List<AudioSegment> {
         val finished = mutableListOf<AudioSegment>()
         while (!vad.empty()) {
             val seg = vad.front()
-            finished.add(AudioSegment(startSample = seg.start, samples = seg.samples))
+            finished.add(padded(seg.start, seg.samples))
             vad.pop()
         }
+        return finished
+    }
+
+    override fun acceptAudioChunk(samples: FloatArray): List<AudioSegment> {
+        val t0 = System.nanoTime()
+        remember(samples)
+        vad.acceptWaveform(samples)
+        val finished = drainVad()
         totalVadNanos += System.nanoTime() - t0
         return finished
     }
@@ -107,12 +142,7 @@ class SherpaOnnxSttEngine(
     override fun flushPending(): List<AudioSegment> {
         val t0 = System.nanoTime()
         vad.flush()
-        val finished = mutableListOf<AudioSegment>()
-        while (!vad.empty()) {
-            val seg = vad.front()
-            finished.add(AudioSegment(startSample = seg.start, samples = seg.samples))
-            vad.pop()
-        }
+        val finished = drainVad()
         totalVadNanos += System.nanoTime() - t0
         return finished
     }
